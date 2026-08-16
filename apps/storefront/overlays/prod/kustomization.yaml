@@ -38,8 +38,41 @@ replicas:
     # has a NodePool - it is a one-line change and this comment is the reminder.
     count: 2
 
+# Patch inlined rather than kept in resources-patch.yaml.
+#
+# A strategic-merge patch in its own file looks like a complete Deployment to
+# anything that reads manifests without rendering them - it has apiVersion, kind
+# and metadata, and none of the securityContext that lives in base. Static
+# scanners duly report a privileged, root-running container that does not exist.
+# Inlining keeps the patch honest about being a fragment.
+#
+# Prod gets more headroom per pod: a request that is too low means the scheduler
+# packs the node and the pod is throttled under exactly the load it was sized for.
+#
+# Still fits the app-prod ResourceQuota at 2 replicas:
+#   requests  2 x 100m = 200m of 1000m     2 x 128Mi = 256Mi of 1Gi
+#   limits    2 x 500m = 1000m of 3000m    2 x 256Mi = 512Mi of 2Gi
+#
+# Raising replicas without re-checking that arithmetic fails at the quota rather
+# than the scheduler, which is a more confusing error.
 patches:
-  - path: resources-patch.yaml
-    target:
+  - target:
       kind: Deployment
       name: storefront
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: storefront
+      spec:
+        template:
+          spec:
+            containers:
+              - name: storefront
+                resources:
+                  requests:
+                    cpu: 100m
+                    memory: 128Mi
+                  limits:
+                    cpu: 500m
+                    memory: 256Mi

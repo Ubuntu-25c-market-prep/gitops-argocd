@@ -57,10 +57,15 @@ spec:
 
       containers:
         - name: storefront
-          # Deliberately a bare name. The registry and tag are applied by the
-          # `images:` transformer - registry in base/kustomization.yaml, tag in
-          # each overlay. Promotion is a change to that tag and nothing else.
-          image: storefront
+          # The real registry and tag are applied by each overlay's `images:`
+          # transformer - kustomize matches on the name portion, so this tag is
+          # replaced wholesale. Promotion is a change to that tag and nothing else.
+          #
+          # The placeholder tag is not decoration: an untagged image here would be
+          # flagged (correctly) as an implicit `:latest`, and a base that renders to
+          # a runnable-looking untagged image is a trap for anyone who applies it
+          # directly.
+          image: storefront:0.0.0-set-by-overlay
 
           ports:
             - name: http
