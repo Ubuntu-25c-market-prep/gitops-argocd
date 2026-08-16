@@ -1,0 +1,28 @@
+# gitops-argocd/apps/storefront/overlays/stage
+#
+# Deliberately identical to dev apart from the namespace and the tag. Stage
+# exists to run the exact image that is about to reach prod, under the same
+# constraints it met in dev. A stage that is quietly roomier than dev tests
+# nothing, and a stage that is quietly smaller fails for reasons prod never
+# will.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: app-stage
+
+resources:
+  - ../../base
+
+images:
+  - name: storefront
+    # PLACEHOLDER pending the account-id decision - see the PR. The real value
+    # is <account-id>.dkr.ecr.us-east-1.amazonaws.com/25c-project/storefront
+    newName: ECR_REGISTRY_PENDING_DECISION/25c-project/storefront
+    # ─── PROMOTION HAPPENS HERE ───────────────────────────────────────────
+    # dev → stage is a pull request that copies dev's tag onto this line.
+    # The tag must already be running in dev before it is copied here.
+    newTag: "0.1.0"
+
+replicas:
+  - name: storefront
+    count: 1

@@ -1,0 +1,29 @@
+# gitops-argocd/apps/storefront/overlays/prod/resources-patch.yaml
+#
+# Prod gets more headroom per pod. Requests rise because prod carries real
+# traffic and a request that is too low means the scheduler packs the node and
+# the pod is throttled under exactly the load it was sized for. Limits rise with
+# them so the ratio stays sane.
+#
+# These still fit the app-prod ResourceQuota with 2 replicas:
+#   requests  2 x 100m  =  200m  of 1000m      2 x 128Mi = 256Mi of 1Gi
+#   limits    2 x 500m  = 1000m  of 3000m      2 x 256Mi = 512Mi of 2Gi
+#
+# Raising replicas without re-checking that arithmetic is how a deploy fails at
+# the quota rather than at the scheduler, which is a more confusing error.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: storefront
+spec:
+  template:
+    spec:
+      containers:
+        - name: storefront
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi

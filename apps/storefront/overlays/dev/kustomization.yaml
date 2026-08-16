@@ -1,0 +1,31 @@
+# gitops-argocd/apps/storefront/overlays/dev
+#
+# An overlay changes the namespace, the image tag, replica counts and resource
+# limits. It never changes the cluster target - there is one cluster, and
+# environments are namespaces in it (ADR 0002).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: app-dev
+
+resources:
+  - ../../base
+
+images:
+  - name: storefront
+    # PLACEHOLDER pending the account-id decision - see the PR. The real value
+    # is <account-id>.dkr.ecr.us-east-1.amazonaws.com/25c-project/storefront
+    newName: ECR_REGISTRY_PENDING_DECISION/25c-project/storefront
+    # ─── PROMOTION HAPPENS HERE ───────────────────────────────────────────
+    # A promotion into dev is a pull request that changes this one line.
+    # Never edit base to promote. Never sync from the Argo UI - a UI sync that
+    # is not in git is reverted at the next reconcile, silently.
+    newTag: "0.1.0"
+
+replicas:
+  - name: storefront
+    count: 1
+
+# Resource requests and limits are inherited from base unchanged. dev exists to
+# run the same shape of workload as everything else; making it smaller here would
+# mean dev never exercises the limits stage and prod apply.

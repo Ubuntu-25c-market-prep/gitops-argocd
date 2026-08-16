@@ -1,0 +1,45 @@
+# gitops-argocd/apps/storefront/overlays/prod
+#
+# The only overlay that differs in more than its namespace and tag, because it
+# is the only one that runs more than one replica.
+#
+# Note what is NOT here: a syncPolicy. Prod syncs require manual approval, and
+# that is enforced in three independent places - the ApplicationSet omits
+# `automated` for prod (gitops-argocd#2), the Argo RBAC grants `sync` on
+# `*-dev` and `*-stage` but never `*-prod` (gitops-argocd#1), and CODEOWNERS
+# requires @cto review on this directory. Any one of them alone would be a
+# convention; three make it a control.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: app-prod
+
+resources:
+  - ../../base
+
+images:
+  - name: storefront
+    # PLACEHOLDER pending the account-id decision - see the PR. The real value
+    # is <account-id>.dkr.ecr.us-east-1.amazonaws.com/25c-project/storefront
+    newName: ECR_REGISTRY_PENDING_DECISION/25c-project/storefront
+    # ─── PROMOTION HAPPENS HERE ───────────────────────────────────────────
+    # stage → prod is a pull request that copies stage's tag onto this line,
+    # reviewed by @cto. The tag must already be running in stage.
+    #
+    # The tag is immutable in ECR, so "the tag we tested" and "the tag we
+    # deployed" cannot drift apart. That is what makes this line sufficient.
+    newTag: "0.1.0"
+
+replicas:
+  - name: storefront
+    # Two, not three. Three replicas plus maxSurge would need 4 pod slots and
+    # the cluster currently has 3 free in total (see gitops-flux#94). Two is the
+    # minimum that survives a rolling update at all. Raise this once Karpenter
+    # has a NodePool - it is a one-line change and this comment is the reminder.
+    count: 2
+
+patches:
+  - path: resources-patch.yaml
+    target:
+      kind: Deployment
+      name: storefront
