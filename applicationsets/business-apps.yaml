@@ -1,0 +1,89 @@
+# gitops-argocd/applicationsets/business-apps.yaml
+#
+# Generates the dev and stage Applications for every app under apps/.
+# Prod is a SEPARATE ApplicationSet (business-apps-prod.yaml) because prod
+# differs in the one field that matters - it has no automated sync - and a
+# conditional inside a shared template is exactly the kind of thing that gets
+# edited wrong at 2am.
+#
+# Adding an application to the platform is therefore: create
+# apps/<name>/{base,overlays/*}, merge, done. No file in this directory changes.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: business-apps
+  namespace: argocd
+  labels:
+    u25c.io/workstream: argocd
+    u25c.io/owner: argocd
+spec:
+  # Go templating rather than the legacy {{param}} substitution. missingkey=error
+  # is the point of turning it on: without it a typo'd field renders as the empty
+  # string and you get an Application called "-dev" pointed at namespace "app-",
+  # with no error anywhere.
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+
+  generators:
+    - git:
+        repoURL: https://github.com/Ubuntu-25c-market-prep/gitops-argocd.git
+        revision: main
+        # One entry per environment. The glob is on the app name, so this picks
+        # up new applications but NOT new environments - a fourth environment is
+        # a deliberate edit here, not something a directory rename can conjure.
+        directories:
+          - path: apps/*/overlays/dev
+          - path: apps/*/overlays/stage
+
+  template:
+    metadata:
+      # apps/storefront/overlays/dev -> segments = [apps storefront overlays dev]
+      # so segment 1 is the app name and basename is the environment.
+      name: '{{index .path.segments 1}}-{{.path.basename}}'
+      labels:
+        app.kubernetes.io/name: '{{index .path.segments 1}}'
+        app.kubernetes.io/part-of: business
+        u25c.io/workstream: argocd
+        u25c.io/owner: argocd
+        u25c.io/environment: '{{.path.basename}}'
+      finalizers:
+        # Deleting the Application deletes what it deployed. Without this the
+        # Application disappears and the workload keeps running, unowned and
+        # unreconciled - the worst of both worlds.
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: business
+
+      source:
+        repoURL: https://github.com/Ubuntu-25c-market-prep/gitops-argocd.git
+        targetRevision: main
+        path: '{{.path.path}}'
+
+      destination:
+        server: https://kubernetes.default.svc
+        # app-dev / app-stage. Created by Flux, never by Argo - see the note on
+        # CreateNamespace in projects/business.yaml.
+        namespace: 'app-{{.path.basename}}'
+
+      syncPolicy:
+        automated:
+          # Delete objects removed from git.
+          prune: true
+          # Revert manual kubectl edits. Together with prune this is what makes
+          # git the source of truth rather than a suggestion.
+          selfHeal: true
+        retry:
+          limit: 5
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m
+        # Deliberately NOT set: CreateNamespace=true. The app-* namespaces carry
+        # a ResourceQuota, a LimitRange and Pod Security Admission labels, and
+        # they are Flux's (gitops-flux#94). An Argo-created namespace would have
+        # none of that and would fight Flux for ownership.
+        syncOptions:
+          # Prune in dependency order and prune last, so a rename does not delete
+          # the Service before the Deployment that is still serving from it.
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true

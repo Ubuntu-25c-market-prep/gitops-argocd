@@ -1,0 +1,89 @@
+# gitops-argocd/applicationsets/business-apps-prod.yaml
+#
+# Prod. Same generator shape as business-apps.yaml, three deliberate differences:
+#
+#   1. No syncPolicy.automated      - a merged PR does not deploy by itself.
+#   2. applicationsSync: create-update - this ApplicationSet may never DELETE a
+#                                     prod Application.
+#   3. preserveResourcesOnDeletion  - and if one is removed anyway, the running
+#                                     workload survives it.
+#
+# Everything else is identical on purpose. If you change one file in this
+# directory, check whether the other needs the same change.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: business-apps-prod
+  namespace: argocd
+  labels:
+    u25c.io/workstream: argocd
+    u25c.io/owner: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+
+  # The blast radius of an ApplicationSet is every Application it generates, and
+  # a generator that transiently returns nothing - a git outage, a bad glob, a
+  # renamed directory - reads as "delete them all". create-update removes that
+  # failure mode entirely for prod: this controller can create and update prod
+  # Applications, and that is all.
+  #
+  # The cost is honest: deleting apps/<name>/overlays/prod leaves the prod
+  # Application behind, and someone has to remove it by hand. Retiring a
+  # production service should require a human.
+  syncPolicy:
+    applicationsSync: create-update
+    # Second belt. If a prod Application is deleted regardless, the Deployment,
+    # Service and everything else stay running rather than cascading away.
+    preserveResourcesOnDeletion: true
+
+  generators:
+    - git:
+        repoURL: https://github.com/Ubuntu-25c-market-prep/gitops-argocd.git
+        revision: main
+        directories:
+          - path: apps/*/overlays/prod
+
+  template:
+    metadata:
+      name: '{{index .path.segments 1}}-prod'
+      labels:
+        app.kubernetes.io/name: '{{index .path.segments 1}}'
+        app.kubernetes.io/part-of: business
+        u25c.io/workstream: argocd
+        u25c.io/owner: argocd
+        u25c.io/environment: prod
+      # No resources-finalizer here. It would undo preserveResourcesOnDeletion:
+      # the finalizer's whole job is to cascade the delete we are preventing.
+    spec:
+      project: business
+
+      source:
+        repoURL: https://github.com/Ubuntu-25c-market-prep/gitops-argocd.git
+        targetRevision: main
+        path: '{{.path.path}}'
+
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: app-prod
+
+      # NO automated BLOCK. This is the control, not an omission - a merged PR
+      # leaves the Application OutOfSync until someone syncs it. Do not add
+      # `automated:` here to "fix" a prod app showing OutOfSync; that state is
+      # the feature.
+      #
+      # It is one of three independent controls on a production release:
+      #   - this file            : no automated sync
+      #   - .github/CODEOWNERS   : /apps/*/overlays/prod/ requires @cto review
+      #   - argocd-rbac-cm       : no role outside argocd/cto may sync *-prod
+      # See docs/promotion.md.
+      syncPolicy:
+        retry:
+          limit: 5
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m
+        syncOptions:
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
