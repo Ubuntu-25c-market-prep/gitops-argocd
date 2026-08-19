@@ -16,8 +16,30 @@ consequence of it or a rule that protects it.
 # apps/storefront/overlays/stage/kustomization.yaml
 images:
   - name: storefront
-    newName: <registry>/25c-project/storefront
     newTag: "1.4.2"        # ← this
+```
+
+There is no `newName`. The registry host embeds the AWS account id and this
+repository is public, so it is never committed - the ApplicationSet reads
+`newTag` out of this file and prepends the registry at sync time, taking it from
+an annotation on the cluster Secret. `gitops-flux` keeps every IRSA role ARN out
+of git the same way (`gitops-flux#97`); this is the Kustomize equivalent.
+
+The practical consequence: **`kustomize build` on an overlay renders
+`storefront:1.4.2`, with no registry.** That is not a bug and not a placeholder
+to be filled in. What Argo CD applies is:
+
+```
+808540602855.dkr.ecr.us-east-1.amazonaws.com/25c-project/storefront:1.4.2
+```
+
+To see the real rendered output locally:
+
+```bash
+cd apps/storefront/overlays/stage
+kustomize edit set image storefront=$REGISTRY/25c-project/storefront:1.4.2
+kustomize build .
+git checkout kustomization.yaml    # do not commit that
 ```
 
 ## Promoting, step by step
@@ -121,8 +143,15 @@ Honest limits as of 2026-08-16, not permanent properties:
 
 - **Prod runs 2 replicas, not 3.** The cluster has 3 free pod slots in total
   (`gitops-flux#94` has the arithmetic). Raise it once Karpenter has a NodePool.
-- **The registry host is a placeholder.** `ECR_REGISTRY_PENDING_DECISION` — the
-  real value embeds the AWS account id and this repository is public. Pending a
-  decision from `@cto` / `@security`.
+- **The registry annotation must exist before anything can sync.** The
+  ApplicationSet reads it from the cluster Secret; without it, generation fails
+  loudly rather than deploying a wrong image. Created out of band, exactly like
+  the ConfigMaps `gitops-flux` uses for IRSA ARNs:
+
+  ```bash
+  kubectl -n argocd annotate secret cluster-in-cluster \
+    u25c.io/ecr-registry="$(aws sts get-caller-identity --query Account --output text)\
+.dkr.ecr.us-east-1.amazonaws.com"
+  ```
 - **Nothing is deployed yet.** Argo CD is not installed (`gitops-argocd#1`), which
   is itself waiting on `ops-program#48` and `gitops-flux#93`.

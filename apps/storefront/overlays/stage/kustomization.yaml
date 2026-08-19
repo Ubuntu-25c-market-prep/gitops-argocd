@@ -15,12 +15,22 @@ resources:
 
 images:
   - name: storefront
-    # PLACEHOLDER pending the account-id decision - see the PR. The real value
-    # is <account-id>.dkr.ecr.us-east-1.amazonaws.com/25c-project/storefront
-    newName: ECR_REGISTRY_PENDING_DECISION/25c-project/storefront
+    # No `newName` here, deliberately. The registry host is
+    # <account-id>.dkr.ecr.us-east-1.amazonaws.com and this repository is public,
+    # so the account id stays out of git (engineering handbook; and gitops-flux
+    # does the same for every IRSA ARN - see gitops-flux#97).
+    #
+    # The ApplicationSet supplies the full reference at sync time by reading
+    # `newTag` out of THIS FILE and prepending the registry, which it gets from
+    # an annotation on the cluster Secret. See applicationsets/business-apps.yaml.
+    #
+    # `kustomize build` here therefore renders `storefront:<tag>` - a name with
+    # no registry, which is obviously not deployable. That is intentional: a
+    # placeholder that looks real is worse than one that does not.
     # ─── PROMOTION HAPPENS HERE ───────────────────────────────────────────
-    # dev → stage is a pull request that copies dev's tag onto this line.
-    # The tag must already be running in dev before it is copied here.
+    # dev -> stage is a pull request that copies dev's tag onto this line.
+    # Never edit base to promote. Never sync from the Argo UI - a UI sync that
+    # is not in git is reverted at the next reconcile, silently.
     newTag: "0.1.0"
 
 replicas:
