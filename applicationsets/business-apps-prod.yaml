@@ -37,12 +37,20 @@ spec:
     # Service and everything else stay running rather than cascading away.
     preserveResourcesOnDeletion: true
 
+  # Same matrix as business-apps.yaml - see the comments there for why each half
+  # exists. Kept identical on purpose; if you change one, check the other.
   generators:
-    - git:
-        repoURL: https://github.com/Ubuntu-25c-market-prep/gitops-argocd.git
-        revision: main
-        directories:
-          - path: apps/*/overlays/prod
+    - matrix:
+        generators:
+          - git:
+              repoURL: https://github.com/Ubuntu-25c-market-prep/gitops-argocd.git
+              revision: main
+              files:
+                - path: apps/*/overlays/prod/kustomization.yaml
+          - clusters:
+              selector:
+                matchLabels:
+                  u25c.io/ecr-registry-source: "true"
 
   template:
     metadata:
@@ -63,8 +71,15 @@ spec:
         targetRevision: main
         path: '{{.path.path}}'
 
+        # Registry from the cluster annotation, tag from the overlay. Both must
+        # be supplied together - `kustomize edit set image` replaces the entry
+        # rather than merging, so a registry-only override drops the tag.
+        kustomize:
+          images:
+            - '{{index .path.segments 1}}={{index .metadata.annotations "u25c.io/ecr-registry"}}/25c-project/{{index .path.segments 1}}:{{(index .images 0).newTag}}'
+
       destination:
-        server: https://kubernetes.default.svc
+        server: '{{.server}}'
         namespace: app-prod
 
       # NO automated BLOCK. This is the control, not an omission - a merged PR
