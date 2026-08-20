@@ -1,0 +1,23 @@
+# gitops-argocd/apps/storefront/base/service.yaml
+#
+# The port is named `http`, which is not cosmetic: Istio decides a port's
+# protocol from its name. An unnamed or oddly-named port is treated as opaque
+# TCP, and you silently lose HTTP telemetry, routing and retries.
+apiVersion: v1
+kind: Service
+metadata:
+  name: storefront
+  labels:
+    app.kubernetes.io/name: storefront
+    app.kubernetes.io/part-of: business
+    u25c.io/workstream: argocd
+    u25c.io/owner: argocd
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: storefront
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP

@@ -1,0 +1,87 @@
+# gitops-argocd/apps/storefront/overlays/prod
+#
+# The only overlay that differs in more than its namespace and tag, because it
+# is the only one that runs more than one replica.
+#
+# Note what is NOT here: a syncPolicy. Prod syncs require manual approval, and
+# that is enforced in three independent places - the ApplicationSet omits
+# `automated` for prod (gitops-argocd#2), the Argo RBAC grants `sync` on
+# `*-dev` and `*-stage` but never `*-prod` (gitops-argocd#1), and CODEOWNERS
+# requires @cto review on this directory. Any one of them alone would be a
+# convention; three make it a control.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: app-prod
+
+resources:
+  - ../../base
+
+images:
+  - name: storefront
+    # No `newName` here, deliberately. The registry host is
+    # <account-id>.dkr.ecr.us-east-1.amazonaws.com and this repository is public,
+    # so the account id stays out of git (engineering handbook; and gitops-flux
+    # does the same for every IRSA ARN - see gitops-flux#97).
+    #
+    # The ApplicationSet supplies the full reference at sync time by reading
+    # `newTag` out of THIS FILE and prepending the registry, which it gets from
+    # an annotation on the cluster Secret. See applicationsets/business-apps.yaml.
+    #
+    # `kustomize build` here therefore renders `storefront:<tag>` - a name with
+    # no registry, which is obviously not deployable. That is intentional: a
+    # placeholder that looks real is worse than one that does not.
+    # ─── PROMOTION HAPPENS HERE ───────────────────────────────────────────
+    # stage -> prod is a pull request that copies stage's tag onto this line,
+    # reviewed by @cto. The tag must already be running in stage.
+    #
+    # The tag is immutable in ECR, so "the tag we tested" and "the tag we
+    # deployed" cannot drift apart. That is what makes this line sufficient.
+    newTag: "0.1.0"
+
+replicas:
+  - name: storefront
+    # Two, not three. Three replicas plus maxSurge would need 4 pod slots and
+    # the cluster currently has 3 free in total (see gitops-flux#94). Two is the
+    # minimum that survives a rolling update at all. Raise this once Karpenter
+    # has a NodePool - it is a one-line change and this comment is the reminder.
+    count: 2
+
+# Patch inlined rather than kept in resources-patch.yaml.
+#
+# A strategic-merge patch in its own file looks like a complete Deployment to
+# anything that reads manifests without rendering them - it has apiVersion, kind
+# and metadata, and none of the securityContext that lives in base. Static
+# scanners duly report a privileged, root-running container that does not exist.
+# Inlining keeps the patch honest about being a fragment.
+#
+# Prod gets more headroom per pod: a request that is too low means the scheduler
+# packs the node and the pod is throttled under exactly the load it was sized for.
+#
+# Still fits the app-prod ResourceQuota at 2 replicas:
+#   requests  2 x 100m = 200m of 1000m     2 x 128Mi = 256Mi of 1Gi
+#   limits    2 x 500m = 1000m of 3000m    2 x 256Mi = 512Mi of 2Gi
+#
+# Raising replicas without re-checking that arithmetic fails at the quota rather
+# than the scheduler, which is a more confusing error.
+patches:
+  - target:
+      kind: Deployment
+      name: storefront
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: storefront
+      spec:
+        template:
+          spec:
+            containers:
+              - name: storefront
+                resources:
+                  requests:
+                    cpu: 100m
+                    memory: 128Mi
+                  limits:
+                    cpu: 500m
+                    memory: 256Mi
