@@ -1,0 +1,121 @@
+# gitops-argocd/apps/storefront/base/deployment.yaml
+#
+# Environment-neutral. Nothing here names dev, stage or prod, and nothing here
+# carries an image tag - both are the overlay's job. If you find yourself adding
+# an `if prod` to this file, the change belongs in an overlay instead.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: storefront
+  labels:
+    app.kubernetes.io/name: storefront
+    app.kubernetes.io/part-of: business
+    u25c.io/workstream: argocd
+    u25c.io/owner: argocd
+spec:
+  # Overridden per environment. One replica is the safe base value: an overlay
+  # that forgets to set it gets a working deployment, not an outage.
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: storefront
+
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # maxUnavailable 0 keeps capacity flat during a rollout: a new pod must go
+      # Ready before an old one is removed. It costs one extra pod slot for the
+      # duration, which on this cluster is a real cost - see the PR.
+      maxUnavailable: 0
+      maxSurge: 1
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: storefront
+        app.kubernetes.io/part-of: business
+        u25c.io/workstream: argocd
+        u25c.io/owner: argocd
+    spec:
+      # Must exceed DRAIN_DELAY_SECONDS (default 5) plus the time in-flight
+      # requests need. Below it, kubelet SIGKILLs mid-drain and the graceful
+      # shutdown accomplishes nothing.
+      terminationGracePeriodSeconds: 30
+
+      securityContext:
+        runAsNonRoot: true
+        # Numeric on purpose. Kubernetes cannot resolve a username to a UID, so
+        # runAsNonRoot with a named user fails admission with "container has
+        # runAsNonRoot and image has non-numeric user". 65532 is `nonroot` in the
+        # distroless base.
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: storefront
+          # The real registry and tag are applied by each overlay's `images:`
+          # transformer - kustomize matches on the name portion, so this tag is
+          # replaced wholesale. Promotion is a change to that tag and nothing else.
+          #
+          # The placeholder tag is not decoration: an untagged image here would be
+          # flagged (correctly) as an implicit `:latest`, and a base that renders to
+          # a runnable-looking untagged image is a trap for anyone who applies it
+          # directly.
+          image: storefront:0.0.0-set-by-overlay
+
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
+          env:
+            # Surfaced as labels on storefront_build_info, so a scrape can tell
+            # you who owns a workload without a lookup.
+            - name: U25C_WORKSTREAM
+              value: argocd
+            - name: U25C_OWNER
+              value: argocd
+            - name: LOG_LEVEL
+              value: info
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+
+          # Liveness asks "is the process alive", readiness asks "should traffic
+          # come here". They MUST point at different endpoints. /healthz stays
+          # 200 while the pod drains on purpose; pointing liveness at /readyz
+          # would make kubelet restart every pod during every rollout.
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
+
+          # Overridden per environment. Present in base because Kyverno rejects
+          # workloads without them, and because a base that relies on the
+          # namespace LimitRange to supply defaults is one namespace change away
+          # from silently resizing every environment.
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi

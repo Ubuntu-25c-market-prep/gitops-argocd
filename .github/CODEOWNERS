@@ -17,3 +17,15 @@
 # decided by the resource list inside it - so a new prod cluster is a @cto
 # review, not a folder someone creates in passing. See ADR 0014.
 /clusters/           @Ubuntu-25c-market-prep/cto
+# Prod overlays need @cto specifically, not just @argocd.
+#
+# ORDER IS LOAD-BEARING: CODEOWNERS is last-matching-pattern-wins, so this entry
+# MUST stay BELOW the `*` line above. Moved above it, it matches nothing and this
+# control silently disappears - which is exactly what has happened to every
+# per-directory entry in gitops-flux and infra-aws. See ops-program#48.
+#
+# This narrows prod review to @cto rather than widening it. That is deliberate:
+# it is the third of the three controls on a production release, alongside the
+# absent syncPolicy and the Argo RBAC. See docs/promotion.md.
+/apps/*/overlays/prod/    @Ubuntu-25c-market-prep/cto
+

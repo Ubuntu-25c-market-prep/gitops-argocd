@@ -1,0 +1,17 @@
+# gitops-argocd/apps/storefront/base
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - deployment.yaml
+  - service.yaml
+
+# No `images:` transformer here on purpose.
+#
+# A base that renames the image breaks the overlays: kustomize applies the base
+# transform first, so an overlay matching on `name: storefront` finds nothing and
+# its newTag is dropped SILENTLY - you get an image with no tag and no error.
+#
+# So each overlay sets newName and newTag together. The registry is repeated
+# three times, which is the cost; the benefit is that each overlay is
+# independently readable and a future environment could pull from elsewhere.
