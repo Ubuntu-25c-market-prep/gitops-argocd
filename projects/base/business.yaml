@@ -1,0 +1,112 @@
+# gitops-argocd/projects/business.yaml
+#
+# The AppProject is the security boundary for business delivery. Because
+# environments here are namespaces in ONE cluster (ADR 0002), this file is the
+# only thing standing between a product pull request and the platform - there is
+# no cluster boundary doing that job for us.
+#
+# Read every field below as an answer to "what can a business app NOT do".
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: business
+  # AppProjects must live in the namespace the Argo CD controller runs in.
+  namespace: argocd
+  labels:
+    u25c.io/workstream: argocd
+    u25c.io/owner: argocd
+  # Refuse to be deleted while Applications still reference this project.
+  # Without it, deleting the project orphans every business Application into a
+  # permanent "project does not exist" ComparisonError.
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: >-
+    Business applications delivered from gitops-argocd into the app-* namespaces.
+    Platform components are Flux's and do not belong here (ADR 0012).
+
+  # ---------------------------------------------------------------------------
+  # WHERE MANIFESTS MAY COME FROM
+  # ---------------------------------------------------------------------------
+  # Exactly one repository. An Application in this project cannot be pointed at
+  # a personal fork, a public Helm chart, or gitops-flux. Combined with branch
+  # protection on main, that makes "reviewed pull request" the only path into
+  # the app-* namespaces.
+  sourceRepos:
+    - https://github.com/Ubuntu-25c-market-prep/gitops-argocd.git
+
+  # ---------------------------------------------------------------------------
+  # WHERE THEY MAY BE APPLIED
+  # ---------------------------------------------------------------------------
+  # The app-* glob is the reason the namespaces are named that way. An
+  # Application that could target platform-istio is a way to take down the mesh
+  # from a product pull request.
+  #
+  # THE IN-CLUSTER ADDRESS IS NOT A SINGLE-CLUSTER SHORTCUT. Every cluster runs
+  # its own Argo CD (ADR 0014), so this line stays correct at nine clusters just
+  # as it is at one: an Argo CD instance only ever reconciles the cluster it runs
+  # on, and holds credentials for no other.
+  #
+  # This is the field where the common multi-cluster design goes wrong. A single
+  # hub managing many clusters needs `server: '*'` or an enumerated list, and
+  # then one compromised Application reaches every cluster the hub can see. Per
+  # cluster, that failure mode does not exist. Do not "generalise" this line when
+  # the second cluster appears - the second cluster brings its own Argo CD, and
+  # this file, unchanged.
+  destinations:
+    - namespace: 'app-*'
+      server: https://kubernetes.default.svc
+
+  # ---------------------------------------------------------------------------
+  # WHAT THEY MAY CREATE
+  # ---------------------------------------------------------------------------
+  # An EMPTY whitelist denies every cluster-scoped resource. Not a placeholder -
+  # this is the setting. No ClusterRole, no ClusterRoleBinding, no CRD, no
+  # ValidatingWebhookConfiguration, and no Namespace.
+  #
+  # It is also why no Application in this project sets CreateNamespace=true: the
+  # app-* namespaces are created by Flux (ADR 0012, and gitops-flux#94). Letting
+  # Argo create them would put two controllers on one object, which is the exact
+  # thing the boundary contract forbids.
+  clusterResourceWhitelist: []
+
+  # Namespaced resources are allowed by default; these are carved back out.
+  namespaceResourceBlacklist:
+    # An app that can write its own quota has no quota. Same for LimitRange -
+    # it supplies the defaults every workload in the namespace inherits.
+    - group: ''
+      kind: ResourceQuota
+    - group: ''
+      kind: LimitRange
+    # Namespaced RBAC still escalates: a RoleBinding to an existing ClusterRole
+    # grants that ClusterRole's verbs inside the namespace, which includes
+    # reading every Secret in it. Business apps have no reason to write RBAC.
+    - group: rbac.authorization.k8s.io
+      kind: Role
+    - group: rbac.authorization.k8s.io
+      kind: RoleBinding
+    # Mesh configuration is the istio workstream's. A business app that can
+    # write its own AuthorizationPolicy can turn mTLS enforcement off for
+    # itself; one that can write a VirtualService can claim another team's host.
+    - group: security.istio.io
+      kind: AuthorizationPolicy
+    - group: networking.istio.io
+      kind: VirtualService
+    - group: networking.istio.io
+      kind: Gateway
+
+  # ---------------------------------------------------------------------------
+  # WHO MAY ACT
+  # ---------------------------------------------------------------------------
+  # Project roles are deliberately absent. Access is granted in argocd-rbac-cm,
+  # which Flux owns (ADR 0012), so that one file answers "who can do what"
+  # instead of the answer being split across every project.
+  #
+  # A project role here would also carry its own JWT-issuing capability, which
+  # is a second credential path into the cluster that nobody would be watching.
+
+  # Argo may only delete a resource when git says so.
+  orphanedResources:
+    # Warn, do not act. Surfaces objects living in an app-* namespace that no
+    # Application claims - usually a leftover from a manual kubectl apply.
+    warn: true

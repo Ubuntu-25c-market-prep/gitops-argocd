@@ -1,6 +1,22 @@
 # Argo CD / Argo Workflows desired state for business apps.
 *            @Ubuntu-25c-market-prep/argocd @Ubuntu-25c-market-prep/cto
 
+# The AppProject and the ApplicationSets are the security boundary itself, not
+# an application of it: projects/business.yaml decides what every business app
+# is allowed to do, and applicationsets/ decides which Applications exist at all.
+#
+# ORDER IS LOAD-BEARING: CODEOWNERS is last-matching-pattern-wins, so these
+# entries MUST stay BELOW the `*` line above. Moved above it they match nothing
+# and the control disappears silently - which is what has already happened to
+# every per-directory entry in gitops-flux and infra-aws. See ops-program#48.
+/projects/           @Ubuntu-25c-market-prep/cto
+/applicationsets/    @Ubuntu-25c-market-prep/cto
+
+# The per-cluster entrypoints. Adding a directory here is how a cluster starts
+# reconciling anything at all, and which environments it is allowed to run is
+# decided by the resource list inside it - so a new prod cluster is a @cto
+# review, not a folder someone creates in passing. See ADR 0014.
+/clusters/           @Ubuntu-25c-market-prep/cto
 # Prod overlays need @cto specifically, not just @argocd.
 #
 # ORDER IS LOAD-BEARING: CODEOWNERS is last-matching-pattern-wins, so this entry

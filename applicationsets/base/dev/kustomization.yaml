@@ -1,0 +1,8 @@
+# gitops-argocd/applicationsets/base/dev/kustomization.yaml
+#
+# One directory per environment, so a cluster includes exactly the environments
+# it serves. Mirrors gitops-flux/infrastructures/base/<component>/.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - applicationset.yaml

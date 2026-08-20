@@ -1,0 +1,45 @@
+# gitops-argocd/clusters/dev/25c-shared/kustomization.yaml
+#
+# THE PER-CLUSTER ENTRYPOINT. This is the path Flux's bootstrap Application
+# points at for this cluster (ADR 0012), and it answers exactly one question:
+#
+#   what does THIS cluster's Argo CD reconcile?
+#
+# It mirrors gitops-flux/clusters/<env>/<cluster>/ deliberately. Adding a second
+# cluster is a sibling directory - a new folder that names its own environments -
+# and nothing in base/ or apps/ changes. That is the property being bought here,
+# and it is why this file exists while there is only one cluster to point it at.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# AppProjects and ApplicationSets both live in the namespace the Argo CD
+# controller runs in.
+namespace: argocd
+
+resources:
+  # The security boundary. Every cluster gets it; it is not environment-specific.
+  - ../../../projects/base
+
+  # This cluster runs ALL THREE environments, because today there is one cluster
+  # and dev/stage/prod are namespaces within it (ADR 0002).
+  #
+  # A dedicated prod cluster would list only applicationsets/base/prod here, and
+  # would therefore be incapable of running a dev workload - not by policy, but
+  # because the generator that would create one is not installed on it. That is
+  # a stronger guarantee than the namespace separation this line represents, and
+  # it is the upgrade path ADR 0002 already anticipates.
+  - ../../../applicationsets/base/dev
+  - ../../../applicationsets/base/stage
+  - ../../../applicationsets/base/prod
+
+# Stamps the cluster name onto the AppProject and ApplicationSets, so an object
+# in the argocd namespace says which cluster's entrypoint created it.
+#
+# Deliberately NOT an environment label: this cluster hosts dev, stage and prod
+# at once, and the environment of a workload is set per generated Application by
+# the ApplicationSet template. A cluster-level environment label would contradict
+# it on two thirds of the objects here.
+labels:
+  - includeSelectors: false
+    pairs:
+      u25c.io/cluster: 25c-shared

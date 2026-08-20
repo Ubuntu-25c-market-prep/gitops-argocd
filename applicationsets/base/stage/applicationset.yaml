@@ -1,0 +1,132 @@
+# gitops-argocd/applicationsets/base/business-apps-stage.yaml
+#
+# ONE ApplicationSet PER ENVIRONMENT, and the environment is a property of the
+# CLUSTER, not of this file. A cluster's Argo CD reconciles whichever of these it
+# is given in clusters/<env>/<cluster>/kustomization.yaml.
+#
+# Today one cluster serves dev, stage and prod as namespaces, so its entrypoint
+# lists all three. When prod moves onto its own clusters, each of those lists
+# only business-apps-prod.yaml - and nothing in this directory changes. That
+# split is the whole reason these are separate files rather than one file with
+# three globs.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: business-apps-stage
+  namespace: argocd
+  labels:
+    u25c.io/workstream: argocd
+    u25c.io/owner: argocd
+spec:
+  # Go templating rather than the legacy {{param}} substitution. missingkey=error
+  # is the point of turning it on: without it a typo'd field renders as the empty
+  # string and you get an Application called "-dev" pointed at namespace "app-",
+  # with no error anywhere.
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+
+  # A matrix, because two things have to meet: WHAT to deploy (from git) and
+  # WHERE the images live (from the cluster, deliberately not from git).
+  generators:
+    - matrix:
+        generators:
+          # 1. What to deploy.
+          #
+          # `files`, not `directories`, because the overlay's kustomization.yaml
+          # is parsed and its contents become parameters - which is how the
+          # image tag gets here without being duplicated anywhere.
+          #
+          # One entry per environment. The glob is on the app name, so this picks
+          # up new applications but NOT new environments - a fourth environment is
+          # a deliberate edit here, not something a directory rename can conjure.
+          - git:
+              repoURL: https://github.com/Ubuntu-25c-market-prep/gitops-argocd.git
+              revision: main
+              files:
+                - path: apps/*/overlays/stage/kustomization.yaml
+
+          # 2. Where the images live.
+          #
+          # The registry host is <account-id>.dkr.ecr.us-east-1.amazonaws.com and
+          # this repository is public, so the account id is NOT committed. It
+          # arrives as an annotation on the cluster Secret, created out of band
+          # from `aws sts get-caller-identity` - the same shape as the ConfigMaps
+          # gitops-flux uses for IRSA role ARNs (gitops-flux#97).
+          #
+          # The label selector is not decoration: without it this generator
+          # returns every registered cluster, and a second cluster would silently
+          # double every Application.
+          - clusters:
+              selector:
+                matchLabels:
+                  u25c.io/ecr-registry-source: "true"
+
+  template:
+    metadata:
+      # apps/storefront/overlays/dev -> segments = [apps storefront overlays dev]
+      # so segment 1 is the app name and basename is the environment.
+      name: '{{index .path.segments 1}}-{{.path.basename}}'
+      labels:
+        app.kubernetes.io/name: '{{index .path.segments 1}}'
+        app.kubernetes.io/part-of: business
+        u25c.io/workstream: argocd
+        u25c.io/owner: argocd
+        u25c.io/environment: '{{.path.basename}}'
+      finalizers:
+        # Deleting the Application deletes what it deployed. Without this the
+        # Application disappears and the workload keeps running, unowned and
+        # unreconciled - the worst of both worlds.
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: business
+
+      source:
+        repoURL: https://github.com/Ubuntu-25c-market-prep/gitops-argocd.git
+        targetRevision: main
+        path: '{{.path.path}}'
+
+        # The registry is joined to the tag here, and only here.
+        #
+        # `.images` is the overlay's own `images:` block, parsed by the files
+        # generator - so the tag still lives in the overlay and promotion is
+        # still a one-line pull request there. Nothing is duplicated.
+        #
+        # BOTH name and tag must be supplied. Argo runs `kustomize edit set
+        # image` for each entry, which REPLACES the overlay's entry rather than
+        # merging with it - passing the registry alone silently drops the tag and
+        # deploys base's `0.0.0-set-by-overlay` placeholder. Verified, not assumed.
+        kustomize:
+          images:
+            - '{{index .path.segments 1}}={{index .metadata.annotations "u25c.io/ecr-registry"}}/25c-project/{{index .path.segments 1}}:{{(index .images 0).newTag}}'
+
+      destination:
+        # From the cluster generator, so it cannot disagree with the cluster the
+        # registry annotation came from. The AppProject pins this to the
+        # in-cluster address regardless.
+        server: '{{.server}}'
+        # app-dev / app-stage. Created by Flux, never by Argo - see the note on
+        # CreateNamespace in projects/business.yaml.
+        namespace: 'app-{{.path.basename}}'
+
+      syncPolicy:
+        automated:
+          # Delete objects removed from git.
+          prune: true
+          # Revert manual kubectl edits. Together with prune this is what makes
+          # git the source of truth rather than a suggestion.
+          selfHeal: true
+        retry:
+          limit: 5
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m
+        # Deliberately NOT set: CreateNamespace=true. The app-* namespaces carry
+        # a ResourceQuota, a LimitRange and Pod Security Admission labels, and
+        # they are Flux's (gitops-flux#94). An Argo-created namespace would have
+        # none of that and would fight Flux for ownership.
+        syncOptions:
+          # Prune in dependency order and prune last, so a rename does not delete
+          # the Service before the Deployment that is still serving from it.
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
