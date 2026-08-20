@@ -17,21 +17,41 @@ Overlap is not redundancy — it is two controllers reverting each other.
 ## Layout
 
 ```
-apps/
-├── <app>/
-│   ├── base/                 Kustomize base
-│   └── overlays/
-│       ├── dev/
-│       ├── stage/
-│       └── prod/
+clusters/
+└── <env>/<cluster>/          what THIS cluster's Argo CD reconciles
 applicationsets/
-└── business-apps.yaml        generates Applications from apps/
+└── base/<env>/               one directory per environment
 projects/
-└── business.yaml             AppProject: RBAC and allowed destinations
+└── base/business.yaml        AppProject: allowed destinations and kinds
+apps/
+└── <app>/
+    ├── base/                 Kustomize base, environment-neutral
+    └── overlays/
+        ├── dev/              namespace, image tag, replicas, limits
+        ├── stage/
+        └── prod/
 ```
 
-Environments are **namespaces in one cluster**, not clusters. An overlay changes
-the namespace, replica counts and resource limits — never the cluster target.
+Deliberately the same shape as `gitops-flux`: environment-neutral definitions
+under `base/`, and one entrypoint directory per cluster saying what that cluster
+does with them.
+
+**Every cluster runs its own Argo CD** (ADR 0014), installed by that cluster's
+Flux (ADR 0012). There is no hub, and no Argo CD holds credentials for a cluster
+other than its own — which is why `AppProject.spec.destinations[].server` is
+pinned to the in-cluster address permanently, rather than being a single-cluster
+shortcut to generalise later.
+
+### Adding a cluster
+
+A new directory under `clusters/`, listing the environments that cluster serves.
+Nothing in `base/` or `apps/` changes. A production cluster listing only
+`applicationsets/base/prod` is *incapable* of generating a dev Application —
+not because policy forbids it, but because the generator is not installed there.
+
+Today there is one cluster, and `dev`, `stage` and `prod` are namespaces within
+it (ADR 0002). An overlay changes the namespace, replica counts, image tag and
+resource limits — never the cluster target.
 
 ## Promotion
 
@@ -47,8 +67,10 @@ Prod syncs require manual approval. Dev and stage auto-sync.
 
 ## Images
 
-- Multi-arch (`linux/amd64` and `linux/arm64`). Nodes are Graviton by default;
-  an amd64-only image silently fails to schedule or forces an expensive nodepool.
+- Multi-arch (`linux/amd64` and `linux/arm64`). Graviton is the intent; today the
+  node group is `t3.medium`/amd64 and Karpenter has no NodePools, so the arm64
+  half is built and unused. Building both is what makes that switch a non-event
+  rather than a rebuild.
 - Immutable tags. Never `:latest` — a rollback needs a tag to roll back *to*.
 - ECR only. The Kyverno registry allowlist enforces it.
 
@@ -61,4 +83,6 @@ mesh from a product pull request.
 ## Standards
 
 [Engineering Handbook](https://github.com/Ubuntu-25c-market-prep/ops-program/blob/main/docs/engineering-handbook.md) ·
-[ADR 0002 — single cluster](https://github.com/Ubuntu-25c-market-prep/ops-program/blob/main/docs/adr/0002-single-cluster.md)
+[ADR 0002 — single cluster](https://github.com/Ubuntu-25c-market-prep/ops-program/blob/main/docs/adr/0002-single-cluster.md) ·
+[ADR 0012 — the Flux/Argo boundary](https://github.com/Ubuntu-25c-market-prep/ops-program/blob/main/docs/adr/0012-flux-argo-boundary.md) ·
+[ADR 0014 — one Argo CD per cluster](https://github.com/Ubuntu-25c-market-prep/ops-program/blob/main/docs/adr/0014-per-cluster-argo-cd.md)
