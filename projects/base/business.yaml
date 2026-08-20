@@ -42,9 +42,17 @@ spec:
   # Application that could target platform-istio is a way to take down the mesh
   # from a product pull request.
   #
-  # The server is pinned to the in-cluster address rather than '*'. Argo CD can
-  # hold credentials for other clusters; '*' would let any of them become a
-  # target the moment one is registered.
+  # THE IN-CLUSTER ADDRESS IS NOT A SINGLE-CLUSTER SHORTCUT. Every cluster runs
+  # its own Argo CD (ADR 0014), so this line stays correct at nine clusters just
+  # as it is at one: an Argo CD instance only ever reconciles the cluster it runs
+  # on, and holds credentials for no other.
+  #
+  # This is the field where the common multi-cluster design goes wrong. A single
+  # hub managing many clusters needs `server: '*'` or an enumerated list, and
+  # then one compromised Application reaches every cluster the hub can see. Per
+  # cluster, that failure mode does not exist. Do not "generalise" this line when
+  # the second cluster appears - the second cluster brings its own Argo CD, and
+  # this file, unchanged.
   destinations:
     - namespace: 'app-*'
       server: https://kubernetes.default.svc

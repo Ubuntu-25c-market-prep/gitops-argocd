@@ -11,3 +11,9 @@
 # every per-directory entry in gitops-flux and infra-aws. See ops-program#48.
 /projects/           @Ubuntu-25c-market-prep/cto
 /applicationsets/    @Ubuntu-25c-market-prep/cto
+
+# The per-cluster entrypoints. Adding a directory here is how a cluster starts
+# reconciling anything at all, and which environments it is allowed to run is
+# decided by the resource list inside it - so a new prod cluster is a @cto
+# review, not a folder someone creates in passing. See ADR 0014.
+/clusters/           @Ubuntu-25c-market-prep/cto

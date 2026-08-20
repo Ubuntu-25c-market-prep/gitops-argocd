@@ -1,17 +1,18 @@
-# gitops-argocd/applicationsets/business-apps.yaml
+# gitops-argocd/applicationsets/base/business-apps-stage.yaml
 #
-# Generates the dev and stage Applications for every app under apps/.
-# Prod is a SEPARATE ApplicationSet (business-apps-prod.yaml) because prod
-# differs in the one field that matters - it has no automated sync - and a
-# conditional inside a shared template is exactly the kind of thing that gets
-# edited wrong at 2am.
+# ONE ApplicationSet PER ENVIRONMENT, and the environment is a property of the
+# CLUSTER, not of this file. A cluster's Argo CD reconciles whichever of these it
+# is given in clusters/<env>/<cluster>/kustomization.yaml.
 #
-# Adding an application to the platform is therefore: create
-# apps/<name>/{base,overlays/*}, merge, done. No file in this directory changes.
+# Today one cluster serves dev, stage and prod as namespaces, so its entrypoint
+# lists all three. When prod moves onto its own clusters, each of those lists
+# only business-apps-prod.yaml - and nothing in this directory changes. That
+# split is the whole reason these are separate files rather than one file with
+# three globs.
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
-  name: business-apps
+  name: business-apps-stage
   namespace: argocd
   labels:
     u25c.io/workstream: argocd
@@ -42,7 +43,6 @@ spec:
               repoURL: https://github.com/Ubuntu-25c-market-prep/gitops-argocd.git
               revision: main
               files:
-                - path: apps/*/overlays/dev/kustomization.yaml
                 - path: apps/*/overlays/stage/kustomization.yaml
 
           # 2. Where the images live.
