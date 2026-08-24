@@ -1,0 +1,39 @@
+# gitops-argocd/apps/storefront/overlays/dev/virtualservice.yaml
+#
+# The routing half. gateway.yaml (gitops-flux, istio-gateway overlay) already
+# says "I accept *.25c-team1.art on 443 and here is the certificate"; nothing
+# yet said where storefront.25c-team1.art should GO, which is why that
+# hostname would otherwise return Istio's default 404.
+#
+# Single-level hostname, not <app>.<env>.25c-team1.art: the gateway's TLS
+# certificate SANs are *.25c-team1.art and *.nip.io - one wildcard level.
+# A two-level host would fail the TLS handshake before routing ever runs.
+# ops-program's gateway-conventions.md documents the two-level form; this
+# follows what the live certificate can actually serve instead - see the PR.
+#
+# Lives with storefront's own manifests, not with the Gateway in gitops-flux,
+# for the same reason the Rancher VirtualService does: the route belongs to
+# the thing it routes to, and this is scoped to the dev overlay specifically
+# because app-dev is the only namespace opted into sidecar injection so far
+# (gitops-flux#26 convention, istio.io/rev label).
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: storefront
+spec:
+  hosts:
+    - storefront.25c-team1.art
+  # <namespace>/<name> of the shared Gateway. A bare name would be resolved in
+  # this VirtualService's own namespace (app-dev), where no Gateway exists,
+  # and the route would silently attach to nothing.
+  gateways:
+    - platform-istio/ingressgateway
+  http:
+    - route:
+        - destination:
+            # storefront listens on plain HTTP - TLS is terminated at the
+            # gateway, and Envoy sets X-Forwarded-Proto so storefront knows
+            # the original request was HTTPS.
+            host: storefront.app-dev.svc.cluster.local
+            port:
+              number: 8080
