@@ -23,7 +23,7 @@ metadata:
 spec:
   description: >-
     Business applications delivered from gitops-argocd into the app-* namespaces.
-    Platform components are Flux's and do not belong here (ADR 0012).
+    Platform components are Flux's and do not belong here (ADR 0013).
 
   # ---------------------------------------------------------------------------
   # WHERE MANIFESTS MAY COME FROM
@@ -65,7 +65,7 @@ spec:
   # ValidatingWebhookConfiguration, and no Namespace.
   #
   # It is also why no Application in this project sets CreateNamespace=true: the
-  # app-* namespaces are created by Flux (ADR 0012, and gitops-flux#94). Letting
+  # app-* namespaces are created by Flux (ADR 0013, and gitops-flux#94). Letting
   # Argo create them would put two controllers on one object, which is the exact
   # thing the boundary contract forbids.
   clusterResourceWhitelist: []
@@ -120,7 +120,7 @@ spec:
   # WHO MAY ACT
   # ---------------------------------------------------------------------------
   # Project roles are deliberately absent. Access is granted in argocd-rbac-cm,
-  # which Flux owns (ADR 0012), so that one file answers "who can do what"
+  # which Flux owns (ADR 0013), so that one file answers "who can do what"
   # instead of the answer being split across every project.
   #
   # A project role here would also carry its own JWT-issuing capability, which
