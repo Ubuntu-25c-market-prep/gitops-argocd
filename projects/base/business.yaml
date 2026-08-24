@@ -85,15 +85,36 @@ spec:
       kind: Role
     - group: rbac.authorization.k8s.io
       kind: RoleBinding
-    # Mesh configuration is the istio workstream's. A business app that can
-    # write its own AuthorizationPolicy can turn mTLS enforcement off for
-    # itself; one that can write a VirtualService can claim another team's host.
+    # An app that can write its own AuthorizationPolicy can exempt itself from
+    # mTLS enforcement, and one that can write a Gateway can open a listener
+    # nobody reviewed. Both stay with the istio workstream.
     - group: security.istio.io
       kind: AuthorizationPolicy
     - group: networking.istio.io
-      kind: VirtualService
-    - group: networking.istio.io
       kind: Gateway
+
+    # VirtualService is deliberately NOT on this list.
+    #
+    # It was, on the reasoning that a VirtualService can claim another team's
+    # host. That reasoning is real but the conclusion was wrong: routing is the
+    # application's own concern, the house precedent already puts it with the
+    # app (cattle-system/rancher, not platform-istio), and blacklisting it means
+    # an app cannot be reached at all without a PR to another repository owned
+    # by another workstream. See gitops-argocd#8.
+    #
+    # THE RISK IS NOT SOLVED HERE, and should not be. The shared Gateway serves
+    # `hosts: ["*.25c-team1.art"]` unqualified, so any namespace may bind any
+    # host under it - app-dev could claim rancher.25c-team1.art today. The fix
+    # belongs on the Gateway, which can scope each host to the namespaces
+    # allowed to bind it:
+    #
+    #     hosts:
+    #       - "app-*/*.25c-team1.art"
+    #
+    # That is the istio workstream's file. Raised rather than worked around,
+    # because an AppProject blacklist would only stop Argo CD apps - anything
+    # applied by Flux or by hand bypasses it entirely, so it was never the
+    # control it looked like.
 
   # ---------------------------------------------------------------------------
   # WHO MAY ACT
