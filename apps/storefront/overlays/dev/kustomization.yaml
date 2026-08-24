@@ -10,6 +10,7 @@ namespace: app-dev
 
 resources:
   - ../../base
+  - virtualservice.yaml
 
 images:
   - name: storefront
