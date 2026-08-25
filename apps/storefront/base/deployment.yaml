@@ -32,6 +32,28 @@ spec:
 
   template:
     metadata:
+      annotations:
+        # Size the Istio sidecar. WITHOUT THESE THE POD CANNOT BE CREATED.
+        #
+        # Istio's default proxy limits are cpu 2000m / memory 1024Mi - per pod,
+        # for a sidecar in front of a 3MB Go service. Added to storefront's own
+        # 200m/128Mi that is 2200m/1152Mi, which exceeds the app-dev
+        # ResourceQuota (2 CPU / 1Gi for the whole namespace) and the pod is
+        # rejected at admission:
+        #
+        #   exceeded quota: compute, requested: limits.cpu=2200m,
+        #   limits.memory=1152Mi, limited: limits.cpu=2, limits.memory=1Gi
+        #
+        # The failure is safe rather than silent - maxUnavailable: 0 keeps the
+        # old pod serving - but the rollout stalls until this is set.
+        #
+        # 200m/128Mi mirrors the application container. A sidecar proxying one
+        # low-traffic HTTP service does not need ten times the application's own
+        # ceiling. Revisit if the proxy starts throttling.
+        sidecar.istio.io/proxyCPU: "50m"
+        sidecar.istio.io/proxyMemory: "64Mi"
+        sidecar.istio.io/proxyCPULimit: "200m"
+        sidecar.istio.io/proxyMemoryLimit: "128Mi"
       labels:
         app.kubernetes.io/name: storefront
         app.kubernetes.io/part-of: business
