@@ -1,7 +1,7 @@
 # gitops-argocd/clusters/dev/25c-shared/kustomization.yaml
 #
 # THE PER-CLUSTER ENTRYPOINT. This is the path Flux's bootstrap Application
-# points at for this cluster (ADR 0013), and it answers exactly one question:
+# points at for this cluster (ADR 0015), and it answers exactly one question:
 #
 #   what does THIS cluster's Argo CD reconcile?
 #
