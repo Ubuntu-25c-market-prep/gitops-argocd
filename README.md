@@ -37,7 +37,7 @@ under `base/`, and one entrypoint directory per cluster saying what that cluster
 does with them.
 
 **Every cluster runs its own Argo CD** (ADR 0014), installed by that cluster's
-Flux (ADR 0013). There is no hub, and no Argo CD holds credentials for a cluster
+Flux (ADR 0015). There is no hub, and no Argo CD holds credentials for a cluster
 other than its own — which is why `AppProject.spec.destinations[].server` is
 pinned to the in-cluster address permanently, rather than being a single-cluster
 shortcut to generalise later.
@@ -84,5 +84,5 @@ mesh from a product pull request.
 
 [Engineering Handbook](https://github.com/Ubuntu-25c-market-prep/ops-program/blob/main/docs/engineering-handbook.md) ·
 [ADR 0002 — single cluster](https://github.com/Ubuntu-25c-market-prep/ops-program/blob/main/docs/adr/0002-single-cluster.md) ·
-[ADR 0013 — the Flux/Argo boundary](https://github.com/Ubuntu-25c-market-prep/ops-program/blob/main/docs/adr/0013-flux-argo-boundary.md) ·
+[ADR 0015 — the Flux/Argo boundary](https://github.com/Ubuntu-25c-market-prep/ops-program/blob/main/docs/adr/0015-flux-argo-boundary.md) ·
 [ADR 0014 — one Argo CD per cluster](https://github.com/Ubuntu-25c-market-prep/ops-program/blob/main/docs/adr/0014-per-cluster-argo-cd.md)
