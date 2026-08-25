@@ -76,6 +76,28 @@ patches:
       spec:
         template:
           spec:
+            # Pin prod to the on-demand Karpenter pool (gitops-flux#128).
+            #
+            # BOTH are required and they do different jobs. The nodeSelector
+            # ATTRACTS the pod to that pool; the toleration lets it past the
+            # pool's NoSchedule taint. With only the toleration, the pod is
+            # merely permitted here and the scheduler still prefers the cheaper
+            # untainted apps pool - which is spot, which is what this exists to
+            # avoid. With only the nodeSelector, the taint repels it and the pod
+            # stays Pending.
+            #
+            # Spot reclaims give a 2-minute drain notice. dev and stage can take
+            # that; a production request in flight cannot, and nothing about
+            # `app-prod` as a namespace tells Karpenter that - a NodePool cannot
+            # select by namespace, which is the whole reason this is expressed
+            # on the workload.
+            nodeSelector:
+              u25c.io/pool: prod
+            tolerations:
+              - key: u25c.io/pool
+                operator: Equal
+                value: prod
+                effect: NoSchedule
             containers:
               - name: storefront
                 resources:
