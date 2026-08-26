@@ -20,25 +20,39 @@ resources:
   # The security boundary. Every cluster gets it; it is not environment-specific.
   - ../../../projects/base
 
-  # This cluster runs ALL THREE environments, because today there is one cluster
-  # and dev/stage/prod are namespaces within it (ADR 0002).
+  # DEV ONLY at this stage (gitops-argocd#13). The team is working in dev; stage
+  # and prod are to hold no running workloads until that changes.
   #
-  # A dedicated prod cluster would list only applicationsets/base/prod here, and
-  # would therefore be incapable of running a dev workload - not by policy, but
-  # because the generator that would create one is not installed on it. That is
-  # a stronger guarantee than the namespace separation this line represents, and
-  # it is the upgrade path ADR 0002 already anticipates.
+  # This is the same mechanism a dedicated prod cluster would use, pointed the
+  # other way. That cluster would list only applicationsets/base/prod here and be
+  # incapable of running a dev workload - not by policy, but because the
+  # generator that would create one is not installed on it. This cluster is
+  # currently incapable of producing a stage or prod Application for exactly the
+  # same reason.
+  #
+  # RESTORING: uncomment the two lines below. Nothing else changes - the
+  # ApplicationSets, the overlays and the promotion path all still exist in this
+  # repository, they are simply not installed here. gitops-argocd#2 and #4 remain
+  # delivered work.
+  #
+  # Note the two do NOT behave alike on removal, and the difference is
+  # deliberate. The stage Application carries resources-finalizer, so dropping
+  # its ApplicationSet prunes the workload with it. The prod ApplicationSet sets
+  # preserveResourcesOnDeletion and omits that finalizer, so a git change can
+  # never delete production - which also means the prod workload had to be
+  # removed by hand before this landed, rather than by this file.
   - ../../../applicationsets/base/dev
-  - ../../../applicationsets/base/stage
-  - ../../../applicationsets/base/prod
+  # - ../../../applicationsets/base/stage
+  # - ../../../applicationsets/base/prod
 
 # Stamps the cluster name onto the AppProject and ApplicationSets, so an object
 # in the argocd namespace says which cluster's entrypoint created it.
 #
-# Deliberately NOT an environment label: this cluster hosts dev, stage and prod
-# at once, and the environment of a workload is set per generated Application by
-# the ApplicationSet template. A cluster-level environment label would contradict
-# it on two thirds of the objects here.
+# Deliberately NOT an environment label. The environment of a workload is set
+# per generated Application by the ApplicationSet template, and this cluster is
+# built to host dev, stage and prod at once (ADR 0002) even though only dev is
+# installed today - so a cluster-level environment label would be wrong the
+# moment the other two are restored.
 labels:
   - includeSelectors: false
     pairs:
