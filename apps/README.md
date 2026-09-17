@@ -1,7 +1,7 @@
 # apps/
 
 One directory per business application. This directory is empty by design —
-`storefront` was a sample and was removed in #15 ahead of the `25c-shared`
+the `storefront` sample was removed in #16 ahead of the `25c-shared`
 decommission.
 
 ## What the ApplicationSet expects
@@ -48,4 +48,4 @@ on `*-dev` and `*-stage` but never `*-prod`, and CODEOWNERS on the prod overlay
 are three independent controls. Any one alone is a convention.
 
 See [`docs/promotion.md`](../docs/promotion.md) for how a tag moves between
-environments. Its worked example still uses `storefront`.
+environments.
