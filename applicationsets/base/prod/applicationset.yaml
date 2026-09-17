@@ -71,12 +71,18 @@ spec:
         targetRevision: main
         path: '{{.path.path}}'
 
-        # Registry from the cluster annotation, tag from the overlay. Both must
-        # be supplied together - `kustomize edit set image` replaces the entry
-        # rather than merging, so a registry-only override drops the tag.
+        # Registry from the cluster annotations, tag from the overlay. Both name
+        # and tag must be supplied together - `kustomize edit set image` replaces
+        # the entry rather than merging, so a registry-only override drops the tag.
+        #
+        # TWO annotations: `u25c.io/ecr-registry` is the host,
+        # `u25c.io/ecr-repository-prefix` the path segment under it. The prefix
+        # was the literal `25c-project` until the v2 registries turned out to be
+        # named `<env>-ecr-<region>`. With missingkey=error, a cluster Secret
+        # missing either one generates nothing and says so.
         kustomize:
           images:
-            - '{{index .path.segments 1}}={{index .metadata.annotations "u25c.io/ecr-registry"}}/25c-project/{{index .path.segments 1}}:{{(index .images 0).newTag}}'
+            - '{{index .path.segments 1}}={{index .metadata.annotations "u25c.io/ecr-registry"}}/{{index .metadata.annotations "u25c.io/ecr-repository-prefix"}}/{{index .path.segments 1}}:{{(index .images 0).newTag}}'
 
       destination:
         server: '{{.server}}'

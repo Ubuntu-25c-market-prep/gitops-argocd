@@ -1,0 +1,44 @@
+# gitops-argocd/clusters/dev/dev-eks-us-east-1/kustomization.yaml
+#
+# THE PER-CLUSTER ENTRYPOINT. This is the path Flux's bootstrap Application
+# points at for this cluster (ADR 0015), and it answers exactly one question:
+#
+#   what does THIS cluster's Argo CD reconcile?
+#
+# It mirrors gitops-flux/clusters/<env>/<cluster>/ deliberately. Adding a
+# cluster is a sibling directory - a new folder naming its own environments -
+# and nothing in base/ or apps/ changes. `25c-shared` was removed in the same
+# change that added this one (gitops-flux#210), and the only file that had to
+# be written was this one, which is the property ADR 0014 was arguing for.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# AppProjects and ApplicationSets both live in the namespace the Argo CD
+# controller runs in.
+namespace: argocd
+
+resources:
+  # The security boundary. Every cluster gets it; it is not environment-specific.
+  - ../../../projects/base
+
+  # DEV ONLY, carried over from gitops-argocd#13. The team works in dev, so
+  # stage and prod are not generated here at all - this cluster is incapable of
+  # producing a stage or prod Application, because the generator that would
+  # create one is not installed on it. That is a stronger guarantee than a
+  # policy forbidding it.
+  #
+  # Adding an environment is one line here. Nothing in base/ or apps/ changes.
+  - ../../../applicationsets/base/dev
+
+# Stamps the cluster name onto the AppProject and ApplicationSets, so an object
+# in the argocd namespace says which cluster's entrypoint created it.
+#
+# Deliberately NOT an environment label. The environment of a workload is set
+# per generated Application by the ApplicationSet template, and this cluster is
+# built to host more than one environment even though only dev is installed
+# today - so a cluster-level environment label would be wrong the moment a
+# second one is added.
+labels:
+  - includeSelectors: false
+    pairs:
+      u25c.io/cluster: dev-eks-us-east-1
