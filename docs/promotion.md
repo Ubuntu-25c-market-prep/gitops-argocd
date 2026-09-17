@@ -13,9 +13,9 @@ consequence of it or a rule that protects it.
 ## The one line
 
 ```yaml
-# apps/storefront/overlays/stage/kustomization.yaml
+# apps/<app>/overlays/stage/kustomization.yaml
 images:
-  - name: storefront
+  - name: <app>
     newTag: "1.4.2"        # ← this
 ```
 
@@ -26,18 +26,22 @@ an annotation on the cluster Secret. `gitops-flux` keeps every IRSA role ARN out
 of git the same way (`gitops-flux#97`); this is the Kustomize equivalent.
 
 The practical consequence: **`kustomize build` on an overlay renders
-`storefront:1.4.2`, with no registry.** That is not a bug and not a placeholder
+`<app>:1.4.2`, with no registry.** That is not a bug and not a placeholder
 to be filled in. What Argo CD applies is:
 
 ```
-808540602855.dkr.ecr.us-east-1.amazonaws.com/25c-project/storefront:1.4.2
+<account-id>.dkr.ecr.<region>.amazonaws.com/<ecr-namespace>/<app>:1.4.2
 ```
+
+The real account id is deliberately **not** written here either. It arrives from
+the cluster Secret annotation at sync time, and this file is not an exception to
+its own rule.
 
 To see the real rendered output locally:
 
 ```bash
-cd apps/storefront/overlays/stage
-kustomize edit set image storefront=$REGISTRY/25c-project/storefront:1.4.2
+cd apps/<app>/overlays/stage
+kustomize edit set image <app>=$REGISTRY/<ecr-namespace>/<app>:1.4.2
 kustomize build .
 git checkout kustomization.yaml    # do not commit that
 ```
@@ -47,7 +51,7 @@ git checkout kustomization.yaml    # do not commit that
 **1 · Check what is actually running in the previous environment.**
 
 ```bash
-kubectl -n app-dev get deploy storefront -o jsonpath='{.spec.template.spec.containers[0].image}'
+kubectl -n app-dev get deploy <app> -o jsonpath='{.spec.template.spec.containers[0].image}'
 ```
 
 Read the tag from the *cluster*, not from the previous overlay file. They should
@@ -57,15 +61,15 @@ build forward.
 **2 · Open a pull request changing `newTag` in the next overlay.** Nothing else.
 
 ```
-git checkout -b feat/<issue>-promote-storefront-1.4.2
-# edit apps/storefront/overlays/stage/kustomization.yaml — the newTag line only
+git checkout -b feat/<issue>-promote-<app>-1.4.2
+# edit apps/<app>/overlays/stage/kustomization.yaml — the newTag line only
 ```
 
 **3 · Render it before you push.** This catches a typo that would otherwise
 become a Pending pod.
 
 ```bash
-kustomize build apps/storefront/overlays/stage | grep image:
+kustomize build apps/<app>/overlays/stage | grep image:
 ```
 
 **4 · Merge.** dev and stage sync automatically. **Prod does not** — see below.
@@ -139,19 +143,29 @@ with no record of why.
 
 ## Current constraints
 
-Honest limits as of 2026-08-16, not permanent properties:
+Honest limits as of 2026-09-17, not permanent properties:
 
-- **Prod runs 2 replicas, not 3.** The cluster has 3 free pod slots in total
-  (`gitops-flux#94` has the arithmetic). Raise it once Karpenter has a NodePool.
-- **The registry annotation must exist before anything can sync.** The
-  ApplicationSet reads it from the cluster Secret; without it, generation fails
-  loudly rather than deploying a wrong image. Created out of band, exactly like
-  the ConfigMaps `gitops-flux` uses for IRSA ARNs:
+- **No applications are defined.** `apps/` holds only its README — the
+  `storefront` sample was removed in `#16`. This document describes the
+  mechanism; the first application added will be the first to use it.
+- **A cluster runs only the environments its entrypoint lists.** Where that
+  entrypoint lists `applicationsets/base/dev` alone, the `dev → stage → prod`
+  path above is a one-step path in practice. Adding an environment is a line in
+  that cluster's `clusters/<env>/<cluster>/kustomization.yaml`; nothing in
+  `base/` or `apps/` changes.
+- **The cluster Secret must carry the registry annotations before anything can
+  sync.** The ApplicationSet joins the full image reference at sync time from
+  annotations on that Secret rather than from anything in git, so a cluster
+  whose Secret is missing them generates nothing — loudly, rather than
+  deploying a wrong image. Created out of band, exactly like the ConfigMaps
+  `gitops-flux` uses for IRSA ARNs:
 
   ```bash
   kubectl -n argocd annotate secret cluster-in-cluster \
     u25c.io/ecr-registry="$(aws sts get-caller-identity --query Account --output text)\
 .dkr.ecr.us-east-1.amazonaws.com"
   ```
-- **Nothing is deployed yet.** Argo CD is not installed (`gitops-argocd#1`), which
-  is itself waiting on `ops-program#48` and `gitops-flux#93`.
+
+  The `<ecr-namespace>` half is moving to an annotation on the same Secret, so
+  that a cluster whose registry organises repositories differently needs no
+  change to any ApplicationSet.
