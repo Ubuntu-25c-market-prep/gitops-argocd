@@ -95,9 +95,22 @@ spec:
         # image` for each entry, which REPLACES the overlay's entry rather than
         # merging with it - passing the registry alone silently drops the tag and
         # deploys base's `0.0.0-set-by-overlay` placeholder. Verified, not assumed.
+        #
+        # TWO annotations, not one. `u25c.io/ecr-registry` is the host and
+        # `u25c.io/ecr-repository-prefix` is the path segment under it. The
+        # prefix used to be the literal `25c-project`, which was wrong the moment
+        # a second cluster existed: the v2 registries are named
+        # `<env>-ecr-<region>` (`dev-ecr-us-east-1`), so hardcoding any one value
+        # just relocates the bug to the next environment.
+        #
+        # goTemplateOptions is `missingkey=error` (see spec above), so a cluster
+        # Secret missing either annotation generates NOTHING and says so. That is
+        # deliberate: the alternative is rendering an image reference with an
+        # empty segment and failing later as an ImagePullBackOff, a long way from
+        # the cause.
         kustomize:
           images:
-            - '{{index .path.segments 1}}={{index .metadata.annotations "u25c.io/ecr-registry"}}/25c-project/{{index .path.segments 1}}:{{(index .images 0).newTag}}'
+            - '{{index .path.segments 1}}={{index .metadata.annotations "u25c.io/ecr-registry"}}/{{index .metadata.annotations "u25c.io/ecr-repository-prefix"}}/{{index .path.segments 1}}:{{(index .images 0).newTag}}'
 
       destination:
         # From the cluster generator, so it cannot disagree with the cluster the

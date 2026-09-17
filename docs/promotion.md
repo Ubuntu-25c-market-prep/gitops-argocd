@@ -30,7 +30,7 @@ The practical consequence: **`kustomize build` on an overlay renders
 to be filled in. What Argo CD applies is:
 
 ```
-<account-id>.dkr.ecr.<region>.amazonaws.com/<ecr-namespace>/<app>:1.4.2
+<account-id>.dkr.ecr.<region>.amazonaws.com/<ecr-repository-prefix>/<app>:1.4.2
 ```
 
 The real account id is deliberately **not** written here either. It arrives from
@@ -41,7 +41,7 @@ To see the real rendered output locally:
 
 ```bash
 cd apps/<app>/overlays/stage
-kustomize edit set image <app>=$REGISTRY/<ecr-namespace>/<app>:1.4.2
+kustomize edit set image <app>=$REGISTRY/<ecr-repository-prefix>/<app>:1.4.2
 kustomize build .
 git checkout kustomization.yaml    # do not commit that
 ```
@@ -153,19 +153,70 @@ Honest limits as of 2026-09-17, not permanent properties:
   path above is a one-step path in practice. Adding an environment is a line in
   that cluster's `clusters/<env>/<cluster>/kustomization.yaml`; nothing in
   `base/` or `apps/` changes.
-- **The cluster Secret must carry the registry annotations before anything can
+- **The cluster Secret must carry both registry annotations before anything can
   sync.** The ApplicationSet joins the full image reference at sync time from
   annotations on that Secret rather than from anything in git, so a cluster
-  whose Secret is missing them generates nothing — loudly, rather than
-  deploying a wrong image. Created out of band, exactly like the ConfigMaps
-  `gitops-flux` uses for IRSA ARNs:
+  whose Secret is missing either one generates nothing — loudly, rather than
+  deploying a wrong image.
 
-  ```bash
-  kubectl -n argocd annotate secret cluster-in-cluster \
-    u25c.io/ecr-registry="$(aws sts get-caller-identity --query Account --output text)\
-.dkr.ecr.us-east-1.amazonaws.com"
-  ```
+## The cluster Secret
 
-  The `<ecr-namespace>` half is moving to an annotation on the same Secret, so
-  that a cluster whose registry organises repositories differently needs no
-  change to any ApplicationSet.
+Argo CD's own object for "a cluster I can deploy to". It is created **out of
+band and never committed**, for the same reason `gitops-flux` keeps IRSA role
+ARNs out of git: the registry host contains the AWS account id and these
+repositories are public. A SealedSecret cannot help — sealed-secrets encrypts
+`data`, and these values have to be `metadata`, which stays plaintext.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cluster-in-cluster
+  namespace: argocd
+  labels:
+    # Without this, Argo CD does not recognise the Secret as a cluster at all
+    # and ignores it completely.
+    argocd.argoproj.io/secret-type: cluster
+    # What the ApplicationSet's `clusters` generator selects on. Without it the
+    # generator matches ZERO clusters and produces ZERO Applications - no error,
+    # no event, just nothing.
+    u25c.io/ecr-registry-source: "true"
+  annotations:
+    # The registry host. Account id never enters git.
+    u25c.io/ecr-registry: <account-id>.dkr.ecr.us-east-1.amazonaws.com
+    # The path segment under it. v2 names registries <env>-ecr-<region>, so this
+    # differs per cluster - which is exactly why it is an annotation and not a
+    # literal in the ApplicationSet template.
+    u25c.io/ecr-repository-prefix: dev-ecr-us-east-1
+stringData:
+  name: in-cluster
+  # Every cluster runs its own Argo CD (ADR 0014), so this is always the
+  # in-cluster address. No Argo CD holds credentials for a cluster but its own.
+  server: https://kubernetes.default.svc
+```
+
+Created from the live account so nothing identifying is typed or lands in shell
+history:
+
+```bash
+kubectl create secret generic cluster-in-cluster -n argocd \
+  --from-literal=name=in-cluster \
+  --from-literal=server=https://kubernetes.default.svc
+
+kubectl label secret cluster-in-cluster -n argocd \
+  argocd.argoproj.io/secret-type=cluster \
+  u25c.io/ecr-registry-source=true
+
+kubectl annotate secret cluster-in-cluster -n argocd \
+  u25c.io/ecr-registry="$(aws sts get-caller-identity --query Account --output text)\
+.dkr.ecr.us-east-1.amazonaws.com" \
+  u25c.io/ecr-repository-prefix=dev-ecr-us-east-1
+```
+
+Verify before assuming it worked — three of the four failure modes above are
+silent:
+
+```bash
+kubectl -n argocd get secret cluster-in-cluster \
+  -o jsonpath='{.metadata.labels}{"\n"}{.metadata.annotations}{"\n"}'
+```
