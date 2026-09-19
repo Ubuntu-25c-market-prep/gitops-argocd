@@ -1,0 +1,144 @@
+# gitops-argocd/apps/resume-builder/base/deployment.yaml
+#
+# Environment-neutral. Nothing here names a namespace or a real image tag -
+# both arrive from the overlay, and the registry host arrives at sync time from
+# the cluster Secret annotation (see apps/README.md).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: resume-builder
+  labels:
+    app.kubernetes.io/name: resume-builder
+    app.kubernetes.io/part-of: business
+    u25c.io/workstream: argocd
+    u25c.io/owner: argocd
+spec:
+  # One. This is a static page with no state; a second replica buys nothing
+  # that matters in dev and costs a pod slot against the namespace quota.
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: resume-builder
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: resume-builder
+        app.kubernetes.io/part-of: business
+        u25c.io/workstream: argocd
+        u25c.io/owner: argocd
+
+      annotations:
+        # ---------------------------------------------------------------------
+        # ISTIO SIDECAR SIZING - REQUIRED, not an optimisation.
+        # ---------------------------------------------------------------------
+        # app-dev carries `istio.io/rev: 1-30-3`, so every pod created here gains
+        # an istio-proxy container. Istio's DEFAULT sidecar asks for 100m/128Mi
+        # against limits of 2000m/1Gi - and that 2000m is half of the whole
+        # namespace's limits.cpu quota, spent by one pod, on a proxy in front of
+        # a static file server.
+        #
+        # The app-dev ResourceQuota in gitops-flux is built on a per-pod budget
+        # of 100m CPU / 128Mi requests and 400m / 256Mi limits INCLUDING the
+        # sidecar. These four annotations are what make that arithmetic true:
+        # the sidecar takes exactly half of each figure, the container below
+        # takes the other half.
+        #
+        # Remove them and the pod is rejected at admission once the quota fills,
+        # with an error naming the quota rather than the sidecar - a long way
+        # from the cause.
+        sidecar.istio.io/proxyCPU: "50m"
+        sidecar.istio.io/proxyMemory: "64Mi"
+        sidecar.istio.io/proxyCPULimit: "200m"
+        sidecar.istio.io/proxyMemoryLimit: "128Mi"
+
+    spec:
+      # Pod-level security context. app-dev enforces Pod Security Admission
+      # `baseline` and audits `restricted`; these fields plus the container ones
+      # below are what a `restricted` audit looks for and an image cannot
+      # declare on its own behalf.
+      securityContext:
+        runAsNonRoot: true
+        # 101 is nginx in nginxinc/nginx-unprivileged. Numeric, because
+        # Kubernetes cannot resolve a username to a UID - runAsNonRoot with a
+        # named user fails admission outright.
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: resume-builder
+          # Placeholder, and deliberately not deployable. The overlay supplies
+          # the tag and Argo CD prepends the registry at sync time. If a pod ever
+          # tries to pull THIS string, the image override did not reach it.
+          image: resume-builder:0.0.0-set-by-overlay
+
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+
+          # Kyverno rejects workloads without both (platform-security#14), and
+          # the namespace LimitRange would otherwise default them to values
+          # nobody chose.
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+
+          # /healthz is answered by nginx itself and returns 200 "ok". For a
+          # static site "accepting connections" is the whole of what readiness
+          # can mean, so both probes target the same path.
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+          # readOnlyRootFilesystem: true means every path nginx writes to must
+          # be mounted. The unprivileged image relocates its pid file and all
+          # five temp paths under /tmp, so one emptyDir there covers the pid,
+          # client_body, proxy, fastcgi, uwsgi and scgi paths. /var/cache/nginx
+          # is mounted as well: the image still declares it, and a future
+          # proxy_cache directive would write there with no other warning than
+          # a 500.
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+
+      volumes:
+        # Sized, not unbounded. An emptyDir with no limit can fill the node's
+        # ephemeral storage; these hold a pid file and transient request bodies.
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi
+        - name: nginx-cache
+          emptyDir:
+            sizeLimit: 16Mi

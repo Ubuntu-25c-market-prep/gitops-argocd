@@ -1,0 +1,44 @@
+# gitops-argocd/apps/resume-builder/overlays/dev
+#
+# THIS FILE IS THE REGISTRATION. The business-apps-dev ApplicationSet uses a
+# git FILES generator over `apps/*/overlays/dev/kustomization.yaml`, so an Argo
+# CD Application exists because this path exists, and for no other reason.
+# There is no index to edit and no ApplicationSet change.
+#
+# The generator parses this file and its contents become template parameters.
+# Two of them are load-bearing:
+#
+#   {{index .path.segments 1}}  ->  resume-builder   (directory name)
+#   {{(index .images 0).newTag}} ->  the tag below   (FIRST images entry)
+#
+# so the directory name must equal the ECR repository name, and `newTag` must
+# be on the first entry of `images:`.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+# app-dev, created and owned by Flux. Argo does not create it: the namespace
+# carries a ResourceQuota, a LimitRange and the Pod Security Admission labels,
+# and CreateNamespace=true would put two controllers on one object
+# (gitops-flux#94, ADR 0015).
+namespace: app-dev
+
+# `newTag` ONLY, never `newName`.
+#
+# The registry host embeds the AWS account id and this repository is public, so
+# it is never committed. The ApplicationSet prepends it at sync time from the
+# `u25c.io/ecr-registry` and `u25c.io/ecr-repository-prefix` annotations on the
+# cluster Secret. `kustomize build` here therefore renders
+# `resume-builder:<tag>` with no registry - intentionally not deployable,
+# because a placeholder that looks real is worse than one that does not.
+#
+# What Argo CD actually applies is:
+#   <account-id>.dkr.ecr.us-east-1.amazonaws.com/dev-ecr-us-east-1/resume-builder:<tag>
+images:
+  - name: resume-builder
+    # Replace with the commit SHA that apps-business pushed. The build workflow
+    # echoes the full reference at the end of the job and repeats it in the run
+    # summary; the tag is the part after the colon.
+    newTag: <PASTE_SHA>
