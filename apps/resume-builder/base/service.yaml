@@ -1,0 +1,27 @@
+# gitops-argocd/apps/resume-builder/base/service.yaml
+#
+# ClusterIP, and nothing more. There is no HTTPRoute yet - this cluster uses
+# Gateway API and routing is a separate change - so today this Service is
+# reachable only from inside the mesh, or by `kubectl port-forward`.
+apiVersion: v1
+kind: Service
+metadata:
+  name: resume-builder
+  labels:
+    app.kubernetes.io/name: resume-builder
+    app.kubernetes.io/part-of: business
+    u25c.io/workstream: argocd
+    u25c.io/owner: argocd
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: resume-builder
+  ports:
+    # The port name matters to Istio: a name of `http` (or an `http-` prefix)
+    # is how the sidecar learns this is HTTP and not opaque TCP. Unnamed, it
+    # falls back to plain TCP and every L7 feature - routing rules, request
+    # metrics, retries - silently stops applying.
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

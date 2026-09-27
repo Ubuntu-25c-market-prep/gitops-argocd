@@ -1,0 +1,10 @@
+# gitops-argocd/apps/resume-builder/base
+#
+# Environment-neutral. No namespace and no real image tag: both belong to an
+# overlay. Editing this file to promote a build would move every environment at
+# once, which is the opposite of a promotion path (docs/promotion.md).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - deployment.yaml
+  - service.yaml
