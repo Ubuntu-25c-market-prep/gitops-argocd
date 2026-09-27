@@ -41,4 +41,4 @@ images:
     # Replace with the commit SHA that apps-business pushed. The build workflow
     # echoes the full reference at the end of the job and repeats it in the run
     # summary; the tag is the part after the colon.
-    newTag: <PASTE_SHA>
+    newTag: 1fc90e8d428e68de0775e28420800c90a5e333b5
