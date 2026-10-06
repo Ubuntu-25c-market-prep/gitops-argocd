@@ -1,0 +1,50 @@
+# Step 0 and step 2 - public ingress and blue-green. Applied by hand.
+#
+#   kubectl apply -f 00-ingress-blue-green.yaml
+#
+# Publishes https://helloworld.25c-team1.art/hello through the shared Gateway:
+# external-dns creates the DNS record within a minute or two, and the wildcard
+# certificate already covers the name. Argo CD does not own these routes (it
+# would revert any live change, see ../README.md), so patching them is safe.
+#
+#   curl -s https://helloworld.25c-team1.art/hello
+#   -> Hello version: v1 ...
+#
+# BLUE-GREEN IS A WEIGHT CHANGE. 100/0 serves v1, 0/100 serves v2. The weighted
+# rule is rules[0] of the `helloworld` route. Flip to v2:
+#
+#   kubectl -n app-dev patch httproute helloworld --type=json -p='[{"op":"replace","path":"/spec/rules/0/backendRefs/0/weight","value":0},{"op":"replace","path":"/spec/rules/0/backendRefs/1/weight","value":100}]'
+#
+# and back to v1:
+#
+#   kubectl -n app-dev patch httproute helloworld --type=json -p='[{"op":"replace","path":"/spec/rules/0/backendRefs/0/weight","value":100},{"op":"replace","path":"/spec/rules/0/backendRefs/1/weight","value":0}]'
+#
+# Only /hello is routed (the sample app answers nothing else): any other path
+# is a 404 from the Gateway. Only the https listener is attached, so nothing is
+# served over plain http: an http:// request finds no route and gets a 404.
+#
+# Cleanup:  kubectl -n app-dev delete httproute helloworld
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: helloworld
+  namespace: app-dev
+spec:
+  parentRefs:
+    - name: gateway
+      namespace: platform-istio
+      sectionName: https
+  hostnames:
+    - helloworld.25c-team1.art
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /hello
+      backendRefs:
+        - name: helloworld-v1
+          port: 5000
+          weight: 100
+        - name: helloworld-v2
+          port: 5000
+          weight: 0
