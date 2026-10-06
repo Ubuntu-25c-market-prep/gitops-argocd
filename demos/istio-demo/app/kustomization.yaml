@@ -1,9 +1,10 @@
 # gitops-argocd/demos/istio-demo/app
 #
-# The always-on part of the Istio demo, synced by Application istio-demo-dev.
-# Routing here is Gateway API only. Istio-specific objects (DestinationRule,
-# VirtualService, PeerAuthentication) live in ../scenarios and are applied by
-# hand during the demo.
+# The always-on part of the Istio demo, synced by Application istio-demo-dev:
+# the pods and Services only. Every route (the public ingress, the canary) and
+# every Istio-specific object (DestinationRule, VirtualService,
+# PeerAuthentication) lives in ../scenarios and is applied by hand during the
+# demo, so nothing here can revert a live change.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: app-dev
@@ -12,4 +13,3 @@ resources:
   - helloworld-v1.yaml
   - helloworld-v2.yaml
   - fortio.yaml
-  - httproute.yaml
