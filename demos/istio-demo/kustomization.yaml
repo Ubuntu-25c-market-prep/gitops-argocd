@@ -1,0 +1,10 @@
+# gitops-argocd/demos/istio-demo
+#
+# Registers the demo Application, nothing else. app/ is what that Application
+# syncs; scenarios/ is applied by hand during a live demo and is never synced
+# (see README.md). Referenced as a directory from the cluster entrypoint
+# because kustomize refuses single files outside its own root.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - application.yaml

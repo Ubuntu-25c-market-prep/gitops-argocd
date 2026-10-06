@@ -30,6 +30,11 @@ resources:
   # Adding an environment is one line here. Nothing in base/ or apps/ changes.
   - ../../../applicationsets/base/dev
 
+  # Istio demo for team presentations (helloworld v1/v2 + fortio load). A plain
+  # Application, not an apps/ entry - see demos/istio-demo/README.md. Removing
+  # this line removes the whole demo.
+  - ../../../demos/istio-demo
+
 # Stamps the cluster name onto the AppProject and ApplicationSets, so an object
 # in the argocd namespace says which cluster's entrypoint created it.
 #

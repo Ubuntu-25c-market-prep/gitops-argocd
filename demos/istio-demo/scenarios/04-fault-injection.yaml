@@ -1,0 +1,37 @@
+# Step 5 - fault injection. The one feature that forces the classic Istio API:
+# Gateway API's HTTPRoute has no fault filter. Say that on the slide.
+#
+#   kubectl apply -f 04-fault-injection.yaml
+#
+# 30% of calls to helloworld get an immediate HTTP 503 from the caller's
+# sidecar; the pod never sees them. fortio's steady 1 rps turns the Kiali edge
+# red / orange within a minute. Check from the terminal:
+#
+#   kubectl -n app-dev exec deploy/fortio -c fortio -- \
+#     fortio load -c 1 -qps 5 -n 40 http://helloworld:5000/hello
+#
+# Requires: no `helloworld-mesh` HTTPRoute. Never keep a GAMMA HTTPRoute and a
+# VirtualService on the same host - it is unclear which rules apply.
+#
+# Do not demo retries or timeouts on top of this: the fault filter runs before
+# the router in the same proxy, so retries do not mask the fault and a route
+# timeout does not bound an injected delay.
+#
+# Cleanup:  kubectl -n app-dev delete virtualservice helloworld
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: helloworld
+  namespace: app-dev
+spec:
+  hosts:
+    - helloworld.app-dev.svc.cluster.local
+  http:
+    - fault:
+        abort:
+          percentage:
+            value: 30
+          httpStatus: 503
+      route:
+        - destination:
+            host: helloworld.app-dev.svc.cluster.local

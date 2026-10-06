@@ -1,0 +1,67 @@
+# gitops-argocd/demos/istio-demo/app/services.yaml
+#
+# Three Services over the same pods, on purpose:
+#
+#   helloworld      both versions - what fortio calls inside the mesh, and the
+#                   host the Istio scenarios (DestinationRule, VirtualService)
+#                   attach to
+#   helloworld-v1   one version each - Gateway API splits traffic between
+#   helloworld-v2   backendRefs (Services) by weight, not between pod subsets,
+#                   so canary / blue-green needs a Service per version
+#
+# Port name `http` is how Istio learns the protocol; unnamed, it falls back to
+# opaque TCP and every L7 feature silently stops applying.
+apiVersion: v1
+kind: Service
+metadata:
+  name: helloworld
+  labels:
+    app: helloworld
+    app.kubernetes.io/name: helloworld
+    app.kubernetes.io/part-of: istio-demo
+spec:
+  type: ClusterIP
+  selector:
+    app: helloworld
+  ports:
+    - name: http
+      port: 5000
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: helloworld-v1
+  labels:
+    app: helloworld
+    version: v1
+    app.kubernetes.io/name: helloworld
+    app.kubernetes.io/part-of: istio-demo
+spec:
+  type: ClusterIP
+  selector:
+    app: helloworld
+    version: v1
+  ports:
+    - name: http
+      port: 5000
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: helloworld-v2
+  labels:
+    app: helloworld
+    version: v2
+    app.kubernetes.io/name: helloworld
+    app.kubernetes.io/part-of: istio-demo
+spec:
+  type: ClusterIP
+  selector:
+    app: helloworld
+    version: v2
+  ports:
+    - name: http
+      port: 5000
+      targetPort: http

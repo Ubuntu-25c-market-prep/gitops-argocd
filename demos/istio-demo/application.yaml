@@ -1,0 +1,50 @@
+# gitops-argocd/demos/istio-demo/application.yaml
+#
+# A plain Application, NOT an entry under apps/. The business-apps-dev
+# ApplicationSet rewrites the first image of every app to our ECR registry by
+# directory name; this demo runs public, pinned Docker Hub images (Istio's
+# helloworld sample and fortio) and has two different helloworld images, so it
+# cannot go through that generator.
+#
+# Still project `business`: same destination (app-*), same source repo, same
+# resource blacklist as every business app. Named `*-dev` because argocd-rbac-cm
+# grants manual sync on business/*-dev only.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: istio-demo-dev
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: istio-demo
+    u25c.io/workstream: istio
+    u25c.io/owner: istio
+  finalizers:
+    # Removing this Application (one line in the cluster entrypoint) deletes
+    # every demo workload with it.
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: business
+
+  source:
+    repoURL: https://github.com/Ubuntu-25c-market-prep/gitops-argocd.git
+    targetRevision: main
+    path: demos/istio-demo/app
+
+  destination:
+    server: https://kubernetes.default.svc
+    # Created by Flux (sidecar injection, quota, PSA labels), never by Argo.
+    namespace: app-dev
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+    syncOptions:
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
