@@ -13,7 +13,7 @@ Application `istio-demo-dev` (project `business`, namespace `app-dev`) deploys `
 | `helloworld-v1`, `helloworld-v2` | Istio's own `helloworld` sample. `GET /hello` answers `Hello version: vN, instance: <pod>` |
 | Services `helloworld`, `helloworld-v1`, `helloworld-v2` | `helloworld` selects both versions (mesh traffic, Istio rules); the per-version Services are what Gateway API weights split between |
 | `fortio` | Background load, 1 request/second to `helloworld`, so Kiali always has a live graph |
-| HTTPRoutes `helloworld`, `helloworld-redirect` | `https://helloworld.25c-team1.art` through the shared Gateway; http redirects to https |
+| HTTPRoutes `helloworld`, `helloworld-redirect` | `https://helloworld.25c-team1.art/hello` through the shared Gateway (only `/hello` is routed, anything else is a 404); http redirects to https |
 
 Cost: 3 pods in `app-dev`, about 150m CPU / 192Mi in requests plus sidecars. They run on the base spot pool.
 

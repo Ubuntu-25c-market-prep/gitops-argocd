@@ -49,23 +49,12 @@ spec:
   hostnames:
     - helloworld.25c-team1.art
   rules:
-    # The app only answers on /hello. Send the bare host there so a browser
-    # visit shows the version instead of a 404.
-    - matches:
-        - path:
-            type: Exact
-            value: /
-      filters:
-        - type: RequestRedirect
-          requestRedirect:
-            path:
-              type: ReplaceFullPath
-              replaceFullPath: /hello
-            statusCode: 302
+    # One path, no redirects: the sample app only answers on /hello, so that is
+    # the only path routed. Anything else gets a 404 from the Gateway.
     - matches:
         - path:
             type: PathPrefix
-            value: /
+            value: /hello
       backendRefs:
         - name: helloworld-v1
           port: 5000
