@@ -20,29 +20,10 @@
 #   kubectl -n app-dev patch httproute helloworld --type=json -p='[{"op":"replace","path":"/spec/rules/0/backendRefs/0/weight","value":100},{"op":"replace","path":"/spec/rules/0/backendRefs/1/weight","value":0}]'
 #
 # Only /hello is routed (the sample app answers nothing else): any other path
-# is a 404 from the Gateway. Two routes, because nothing is routed on the http
-# listener alone: http only redirects, https serves.
+# is a 404 from the Gateway. Only the https listener is attached, so nothing is
+# served over plain http: an http:// request finds no route and gets a 404.
 #
-# Cleanup:  kubectl -n app-dev delete httproute helloworld helloworld-redirect
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: helloworld-redirect
-  namespace: app-dev
-spec:
-  parentRefs:
-    - name: gateway
-      namespace: platform-istio
-      sectionName: http
-  hostnames:
-    - helloworld.25c-team1.art
-  rules:
-    - filters:
-        - type: RequestRedirect
-          requestRedirect:
-            scheme: https
-            statusCode: 301
----
+# Cleanup:  kubectl -n app-dev delete httproute helloworld
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:

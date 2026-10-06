@@ -39,7 +39,7 @@ against the cluster yourself.
 | `05-mtls-strict.yaml` | mTLS STRICT | Istio `PeerAuthentication` |
 
 Apply `00-ingress-blue-green.yaml` first: until it is applied the demo has no public URL (the fortio traffic and
-the Kiali graph do not need it). Only `/hello` is routed; any other path is a 404 from the Gateway.
+the Kiali graph do not need it). Only `/hello` is routed, over https only; any other path is a 404 from the Gateway.
 
 Routing is Gateway API only. Istio objects appear where Gateway API has no equivalent. Fault injection is the
 only reason a `VirtualService` is used. Never keep the mesh HTTPRoute (steps 1-2) and a `VirtualService` or
@@ -52,7 +52,7 @@ Application prunes `istio-demo-dev`, and its finalizer deletes everything in `ap
 applied by hand from `scenarios/`:
 
 ```bash
-kubectl -n app-dev delete httproute helloworld helloworld-redirect --ignore-not-found
+kubectl -n app-dev delete httproute helloworld --ignore-not-found
 kubectl -n app-dev delete httproute helloworld-mesh --ignore-not-found
 kubectl -n app-dev delete destinationrule helloworld --ignore-not-found
 kubectl -n app-dev delete virtualservice helloworld --ignore-not-found
