@@ -51,8 +51,8 @@ spec:
       # app-dev audits.
       securityContext:
         runAsNonRoot: true
-        runAsUser: 1000
-        runAsGroup: 1000
+        runAsUser: 10001 # above 10000: Trivy KSV-0020/0021, and no host UID clash
+        runAsGroup: 10001
         seccompProfile:
           type: RuntimeDefault
 
