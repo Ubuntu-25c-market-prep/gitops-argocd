@@ -1,0 +1,100 @@
+# gitops-argocd/demos/istio-demo/app/helloworld-v1.yaml
+#
+# Istio's own helloworld sample (istio/istio samples/helloworld), version 1.
+# GET /hello answers "Hello version: v1, instance: <pod>", so the browser and
+# fortio show which version served each request. /hello burns ~0.1 CPU-second
+# per request on purpose (a sqrt loop) - keep load modest against the 200m limit.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: helloworld-v1
+  labels:
+    app: helloworld
+    version: v1
+    app.kubernetes.io/name: helloworld
+    app.kubernetes.io/version: v1
+    app.kubernetes.io/part-of: istio-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: helloworld
+      version: v1
+  template:
+    metadata:
+      labels:
+        # app/version: Kiali's versioned graph and the per-version Services.
+        # app.kubernetes.io/name/version: Istio's canonical service and revision.
+        app: helloworld
+        version: v1
+        app.kubernetes.io/name: helloworld
+        app.kubernetes.io/version: v1
+        app.kubernetes.io/part-of: istio-demo
+      annotations:
+        # Required in app-dev: the namespace quota assumes 100m/128Mi requests and
+        # 400m/256Mi limits per pod INCLUDING the sidecar. Without these the sidecar
+        # takes Istio's defaults (2000m/1Gi limits) and the pod is rejected once the
+        # quota fills. Same values as resume-builder.
+        sidecar.istio.io/proxyCPU: "50m"
+        sidecar.istio.io/proxyMemory: "64Mi"
+        sidecar.istio.io/proxyCPULimit: "200m"
+        sidecar.istio.io/proxyMemoryLimit: "128Mi"
+    spec:
+      # Base spot pool (docs/karpenter/README.md in gitops-flux). Only two system
+      # nodes remain and they carry gateway-istio, the ingress for everything -
+      # a demo load generator has no business competing with it.
+      nodeSelector:
+        capacity: spot
+
+      # The image has no USER and would run as root. Gunicorn runs fine as any
+      # UID (no passwd entry needed), so the pod meets `restricted`, which
+      # app-dev audits.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001 # above 10000: Trivy KSV-0020/0021, and no host UID clash
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: helloworld
+          image: docker.io/istio/examples-helloworld-v1:1.0
+          # The image binds [::]:5000. Its own Dockerfile recommends an explicit
+          # IPv4 bind under Kubernetes; the VPC CNI here is IPv4-only.
+          command: ["gunicorn", "-b", "0.0.0.0:5000", "app:app", "-k", "gevent"]
+          ports:
+            - name: http
+              containerPort: 5000
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          # Readiness only. The gevent worker is single-threaded and /hello is
+          # CPU-bound, so under a burst /health can queue behind it; a liveness
+          # probe would restart a pod that is merely busy. Generous timeout for
+          # the same reason.
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 5
+          volumeMounts:
+            # Gunicorn's worker heartbeat file goes to /tmp.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi

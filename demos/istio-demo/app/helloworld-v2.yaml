@@ -1,0 +1,78 @@
+# gitops-argocd/demos/istio-demo/app/helloworld-v2.yaml
+#
+# Version 2 of the same sample - "the new release" in the blue-green and canary
+# steps. Identical to helloworld-v1.yaml except the image and the version labels;
+# see that file for the reasoning behind every field.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: helloworld-v2
+  labels:
+    app: helloworld
+    version: v2
+    app.kubernetes.io/name: helloworld
+    app.kubernetes.io/version: v2
+    app.kubernetes.io/part-of: istio-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: helloworld
+      version: v2
+  template:
+    metadata:
+      labels:
+        app: helloworld
+        version: v2
+        app.kubernetes.io/name: helloworld
+        app.kubernetes.io/version: v2
+        app.kubernetes.io/part-of: istio-demo
+      annotations:
+        sidecar.istio.io/proxyCPU: "50m"
+        sidecar.istio.io/proxyMemory: "64Mi"
+        sidecar.istio.io/proxyCPULimit: "200m"
+        sidecar.istio.io/proxyMemoryLimit: "128Mi"
+    spec:
+      nodeSelector:
+        capacity: spot
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: helloworld
+          image: docker.io/istio/examples-helloworld-v2:1.0
+          command: ["gunicorn", "-b", "0.0.0.0:5000", "app:app", "-k", "gevent"]
+          ports:
+            - name: http
+              containerPort: 5000
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 5
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi

@@ -1,0 +1,42 @@
+# Step 4 - circuit breaking. Istio API: Gateway API has no equivalent.
+#
+#   kubectl apply -f 03-circuit-breaker.yaml
+#
+# The connection pool is deliberately tiny: one connection, one queued request.
+# A burst then overflows it and the CALLER's sidecar answers 503 immediately
+# instead of piling load onto helloworld:
+#
+#   kubectl -n app-dev exec deploy/fortio -c fortio -- \
+#     fortio load -c 10 -qps 0 -n 200 http://helloworld:5000/hello
+#
+# Read the result: fortio prints "Code 200 : n" and "Code 503 : n". Kiali's
+# edge turns red for the burst.
+#
+# What this does NOT show: outlier detection (ejecting a bad pod). Pool-overflow
+# 503s are produced by the client proxy, not by the pod, so they do not count
+# toward ejection. outlierDetection is set so the object is a realistic policy,
+# but do not claim an ejection live.
+#
+# Requires: no `helloworld-mesh` HTTPRoute (steps 3a/3b deleted). With it present
+# calls go to helloworld-v1/-v2 and this rule on `helloworld` never matches.
+#
+# Cleanup:  kubectl -n app-dev delete destinationrule helloworld
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: helloworld
+  namespace: app-dev
+spec:
+  host: helloworld.app-dev.svc.cluster.local
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 1
+      http:
+        http1MaxPendingRequests: 1
+        maxRequestsPerConnection: 1
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 5s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50

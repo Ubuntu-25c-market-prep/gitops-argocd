@@ -1,0 +1,84 @@
+# gitops-argocd/demos/istio-demo/app/fortio.yaml
+#
+# Background load so Kiali always has a live graph: fortio calls
+# http://helloworld:5000/hello at 1 request/second forever (-t 0), through its
+# own sidecar, so every call is real mesh traffic (mTLS, metrics, routing rules).
+#
+# 1 rps on purpose: /hello costs ~0.1 CPU-second and each helloworld pod is
+# limited to 200m. Bursts for the demo are run by hand with
+#   kubectl -n app-dev exec deploy/fortio -c fortio -- fortio load ...
+# (the image is FROM scratch - no shell, but exec of the binary works).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fortio
+  labels:
+    app: fortio
+    app.kubernetes.io/name: fortio
+    app.kubernetes.io/part-of: istio-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fortio
+  template:
+    metadata:
+      labels:
+        app: fortio
+        version: v1
+        app.kubernetes.io/name: fortio
+        app.kubernetes.io/version: "1.75.3"
+        app.kubernetes.io/part-of: istio-demo
+      annotations:
+        # Same quota reasoning as helloworld-v1.yaml.
+        sidecar.istio.io/proxyCPU: "50m"
+        sidecar.istio.io/proxyMemory: "64Mi"
+        sidecar.istio.io/proxyCPULimit: "200m"
+        sidecar.istio.io/proxyMemoryLimit: "128Mi"
+    spec:
+      nodeSelector:
+        capacity: spot
+      # No USER in the image (static binary, FROM scratch); it needs none.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: fortio
+          image: docker.io/fortio/fortio:1.75.3
+          # ENTRYPOINT is /usr/bin/fortio, so these are its arguments.
+          # -allow-initial-errors: without it fortio exits if the first warm-up
+          # call fails (helloworld not Ready yet) and the pod crash-loops.
+          args:
+            - load
+            - -t
+            - "0"
+            - -qps
+            - "1"
+            - -c
+            - "1"
+            - -allow-initial-errors
+            - http://helloworld:5000/hello
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          volumeMounts:
+            # Fortio's working directory; only written if a run saves results.
+            - name: data
+              mountPath: /var/lib/fortio
+      volumes:
+        - name: data
+          emptyDir:
+            sizeLimit: 16Mi

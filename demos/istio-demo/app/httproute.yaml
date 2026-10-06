@@ -1,0 +1,75 @@
+# gitops-argocd/demos/istio-demo/app/httproute.yaml
+#
+# Public ingress for the demo: https://helloworld.25c-team1.art through the
+# shared Gateway (platform-istio/gateway). external-dns publishes the record from
+# this route; the wildcard certificate already covers the name (single label).
+# app-dev carries u25c.io/istio-gateway-access: "true", so the Gateway accepts
+# routes from it.
+#
+# TWO routes, because the Gateway rule is "never route on the http listener
+# alone": http only redirects, https serves.
+#
+# BLUE-GREEN IS A WEIGHT CHANGE HERE. The weights below are the whole release
+# switch: 100/0 serves v1, 0/100 serves v2. Flip them in a pull request, Argo CD
+# syncs, the browser changes version. No Deployment is touched and the Gateway is
+# not touched.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: helloworld-redirect
+  labels:
+    app.kubernetes.io/name: helloworld
+    app.kubernetes.io/part-of: istio-demo
+spec:
+  parentRefs:
+    - name: gateway
+      namespace: platform-istio
+      sectionName: http
+  hostnames:
+    - helloworld.25c-team1.art
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: helloworld
+  labels:
+    app.kubernetes.io/name: helloworld
+    app.kubernetes.io/part-of: istio-demo
+spec:
+  parentRefs:
+    - name: gateway
+      namespace: platform-istio
+      sectionName: https
+  hostnames:
+    - helloworld.25c-team1.art
+  rules:
+    # The app only answers on /hello. Send the bare host there so a browser
+    # visit shows the version instead of a 404.
+    - matches:
+        - path:
+            type: Exact
+            value: /
+      filters:
+        - type: RequestRedirect
+          requestRedirect:
+            path:
+              type: ReplaceFullPath
+              replaceFullPath: /hello
+            statusCode: 302
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: helloworld-v1
+          port: 5000
+          weight: 100
+        - name: helloworld-v2
+          port: 5000
+          weight: 0

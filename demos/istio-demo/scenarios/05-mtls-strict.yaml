@@ -1,0 +1,33 @@
+# Step 6 - mutual TLS, STRICT. Istio security API: no Gateway API equivalent.
+#
+# Today the mesh is PERMISSIVE (no PeerAuthentication anywhere): sidecars use
+# mTLS between each other but a plain-text client is still accepted. Show it
+# BEFORE applying, from a pod OUTSIDE the mesh (namespace default has no sidecar):
+#
+#   kubectl run plain -n default --rm -it --restart=Never --image=curlimages/curl -- \
+#     curl -sS -m 5 http://helloworld.app-dev.svc.cluster.local:5000/hello
+#   -> "Hello version: ..."
+#
+# Apply, run the same command again:
+#
+#   kubectl apply -f 05-mtls-strict.yaml
+#   -> connection reset / empty reply: plain text is refused.
+#
+# fortio keeps working (it has a sidecar), so the Kiali graph stays green - that
+# is the point: STRICT only rejects clients outside the mesh.
+#
+# Scoped to the helloworld pods, not the namespace: resume-builder and anything
+# else in app-dev is untouched.
+#
+# Cleanup:  kubectl -n app-dev delete peerauthentication helloworld-strict
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: helloworld-strict
+  namespace: app-dev
+spec:
+  selector:
+    matchLabels:
+      app: helloworld
+  mtls:
+    mode: STRICT

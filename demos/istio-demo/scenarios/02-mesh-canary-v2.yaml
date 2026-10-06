@@ -1,0 +1,25 @@
+# Step 3b - promote the canary: 100% v2. Same object as 01, only the weights move.
+#
+#   kubectl apply -f 02-mesh-canary-v2.yaml
+#
+# Cleanup before step 4:
+#   kubectl -n app-dev delete httproute helloworld-mesh
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: helloworld-mesh
+  namespace: app-dev
+spec:
+  parentRefs:
+    - group: ""
+      kind: Service
+      name: helloworld
+      port: 5000
+  rules:
+    - backendRefs:
+        - name: helloworld-v1
+          port: 5000
+          weight: 0
+        - name: helloworld-v2
+          port: 5000
+          weight: 100

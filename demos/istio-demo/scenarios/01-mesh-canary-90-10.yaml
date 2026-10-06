@@ -1,0 +1,32 @@
+# Step 3a - canary INSIDE the mesh, 90% v1 / 10% v2.
+#
+# NOT synced by Argo CD (see ../README.md). Apply by hand, delete when done:
+#   kubectl apply -f 01-mesh-canary-90-10.yaml
+#
+# A GAMMA route: parentRef is a Service, not the Gateway, so it governs mesh
+# traffic - here fortio -> helloworld through the sidecars. Same Gateway API
+# object as the ingress route, different parent. Kiali shows the 90/10 split on
+# the edges.
+#
+# Name stays `helloworld-mesh` in 02 so applying that file only changes weights.
+# Delete this route before steps 4 and 5: while it exists, calls are routed to
+# helloworld-v1 / helloworld-v2 and never hit rules attached to `helloworld`.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: helloworld-mesh
+  namespace: app-dev
+spec:
+  parentRefs:
+    - group: ""
+      kind: Service
+      name: helloworld
+      port: 5000
+  rules:
+    - backendRefs:
+        - name: helloworld-v1
+          port: 5000
+          weight: 90
+        - name: helloworld-v2
+          port: 5000
+          weight: 10
