@@ -1,0 +1,20 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: helloworld
+  namespace: app-dev
+spec:
+  parentRefs:
+    - name: gateway
+      namespace: platform-istio
+      sectionName: https
+  hostnames:
+    - helloworld.25c-team1.art
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /hello
+      backendRefs:
+        - name: helloworld-v1
+          port: 5000

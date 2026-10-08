@@ -35,6 +35,7 @@ spec:
       http:
         http1MaxPendingRequests: 1
         maxRequestsPerConnection: 1
+    #we don't use outlierDetection in our demo
     outlierDetection:
       consecutive5xxErrors: 5
       interval: 5s
