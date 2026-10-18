@@ -1,0 +1,50 @@
+# gitops-argocd/workflows/application.yaml
+#
+# Syncs workflow DEFINITIONS into argo-workflows. The control plane itself is
+# Flux's (ADR 0015, gitops-flux#263); this is the argoproj.io half.
+#
+# Hand-written rather than generated. The business-apps-dev ApplicationSet
+# globs `apps/*/overlays/dev/kustomization.yaml`, and these are not business
+# applications - they do not belong to an app, they have no environment
+# overlays, and they target a platform namespace. Same reasoning as
+# demos/istio-demo.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: workflows
+  namespace: argocd
+  labels:
+    u25c.io/workstream: argocd
+    u25c.io/owner: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  # NOT `business` - that project permits app-* namespaces only, and these
+  # must land in argo-workflows. See projects/base/workflows.yaml.
+  project: workflows
+
+  source:
+    repoURL: https://github.com/Ubuntu-25c-market-prep/gitops-argocd.git
+    targetRevision: main
+    path: workflows/templates
+
+  destination:
+    server: https://kubernetes.default.svc
+    # Flux creates this namespace (000-cluster-wide-resources). No
+    # CreateNamespace=true - two controllers on one object is what ADR 0015
+    # forbids.
+    namespace: argo-workflows
+
+  syncPolicy:
+    automated:
+      # prune: a template deleted from git should disappear from the cluster.
+      # Safe here precisely because the project forbids `Workflow` - pruning
+      # definitions cannot interrupt a RUN.
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

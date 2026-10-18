@@ -1,0 +1,60 @@
+# gitops-argocd/projects/base/workflows.yaml
+#
+# The security boundary for workflow DEFINITIONS. Separate from `business`
+# for one blunt reason: `business` permits `app-*` namespaces only, and the
+# workflow controller watches `argo-workflows` (gitops-flux sets
+# `workflowNamespaces: [argo-workflows]`). A WorkflowTemplate therefore
+# cannot live anywhere `business` can reach.
+#
+# The alternatives were worse. Widening `business` to `argo-workflows` would
+# let any business application target the workflow control plane's namespace.
+# Using `default`, as the bootstrap Application does, would mean an
+# unconstrained project - bootstrap gets away with that because it is the
+# thing that creates the projects, which is not true here.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: workflows
+  namespace: argocd
+  labels:
+    u25c.io/workstream: argocd
+    u25c.io/owner: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: >-
+    Argo Workflows definitions - WorkflowTemplates and CronWorkflows in the
+    argo-workflows namespace. Definitions only: the control plane itself is
+    Flux's (ADR 0015).
+
+  sourceRepos:
+    - https://github.com/Ubuntu-25c-market-prep/gitops-argocd.git
+
+  # One namespace, and it is NOT an app-* namespace - that is the whole
+  # reason this project exists.
+  destinations:
+    - namespace: argo-workflows
+      server: https://kubernetes.default.svc
+
+  # Empty = deny every cluster-scoped resource. Same setting as `business`,
+  # and for the same reason: nothing here needs a ClusterRole or a CRD.
+  clusterResourceWhitelist: []
+
+  # A WHITELIST, not a blacklist - the opposite of `business`, deliberately.
+  # `business` hosts applications whose shape is not known in advance, so it
+  # denies specific dangerous kinds. This project hosts exactly one kind of
+  # thing: workflow definitions. Anything else appearing here is a mistake,
+  # so the safe default is to permit nothing and name what is allowed.
+  #
+  # Note what is ABSENT: `Workflow` itself. Submitting a run is an action,
+  # not a definition - it belongs to whoever triggers it, not to git. An
+  # Argo CD Application that could create Workflows would re-run every
+  # workflow on every sync.
+  namespaceResourceWhitelist:
+    - group: argoproj.io
+      kind: WorkflowTemplate
+    - group: argoproj.io
+      kind: CronWorkflow
+
+  orphanedResources:
+    warn: true
