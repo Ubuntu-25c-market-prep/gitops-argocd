@@ -1,0 +1,116 @@
+# gitops-argocd/workflows/templates/artifact-smoke-test.yaml
+#
+# PROVES THE S3 ARTIFACT PATH END TO END. This is the only thing that
+# exercises the chain terraform-infra-v2 #54/#55/#56 and gitops-flux #263
+# built between them:
+#
+#   pod runs as `argo-workflow`
+#     -> SA carries eks.amazonaws.com/role-arn (from the sealed values)
+#       -> role trusts system:serviceaccount:argo-workflows:argo-workflow
+#         -> policy allows PutObject/GetObject on the artifact bucket
+#           -> controller's artifactRepository names that bucket, useSDKCreds
+#
+# EVERY link fails silently from the UI's point of view: a wrong SA name, a
+# missing annotation, a role trusting the wrong subject, a bucket typo. They
+# all look like a pod that ran fine and an artifact that is not there.
+#
+# Run it after any change to that chain:
+#
+#   argo submit --from workflowtemplate/artifact-smoke-test -n argo-workflows --watch
+#
+# It is a TEMPLATE, not a CronWorkflow, on purpose - this proves a thing when
+# you ask it to, and does not spend money proving it hourly forever.
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: artifact-smoke-test
+  namespace: argo-workflows
+  labels:
+    u25c.io/workstream: argocd
+    u25c.io/owner: argocd
+spec:
+  # THE LOAD-BEARING LINE. Without it workflows run as the namespace `default`
+  # service account, which carries no role-arn annotation - the upload then
+  # fails with a credentials error that says nothing about service accounts.
+  serviceAccountName: argo-workflow
+
+  # Clean up after itself. A smoke test that leaves pods behind becomes the
+  # reason someone stops running it.
+  ttlStrategy:
+    secondsAfterCompletion: 3600
+    secondsAfterSuccess: 600
+  podGC:
+    strategy: OnWorkflowSuccess
+
+  entrypoint: main
+  templates:
+    - name: main
+      steps:
+        - - name: produce
+            template: produce
+        - - name: consume
+            template: consume
+            arguments:
+              artifacts:
+                - name: payload
+                  # Round trip: this reference is what forces the artifact
+                  # through S3. Two steps in one pod would prove nothing.
+                  from: "{{steps.produce.outputs.artifacts.payload}}"
+
+    - name: produce
+      metadata:
+        labels:
+          u25c.io/workstream: argocd
+      container:
+        image: busybox:1.36
+        command: [sh, -c]
+        args:
+          - |
+            set -eu
+            echo "smoke test, workflow ${ARGO_WORKFLOW_NAME:-unknown}, $(date -u +%FT%TZ)" > /tmp/payload
+            echo "wrote:"; cat /tmp/payload
+        env:
+          - name: ARGO_WORKFLOW_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+        resources:
+          requests: {cpu: 10m, memory: 32Mi}
+          limits: {memory: 64Mi}
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 65534
+          capabilities: {drop: [ALL]}
+          seccompProfile: {type: RuntimeDefault}
+      outputs:
+        artifacts:
+          - name: payload
+            path: /tmp/payload
+            # No `s3:` block here on purpose. Omitting it uses the
+            # controller's default artifactRepository, which is exactly what
+            # we are testing. Naming a bucket here would test a literal.
+
+    - name: consume
+      inputs:
+        artifacts:
+          - name: payload
+            path: /tmp/payload
+      container:
+        image: busybox:1.36
+        command: [sh, -c]
+        args:
+          - |
+            set -eu
+            echo "read back:"; cat /tmp/payload
+            grep -q "smoke test" /tmp/payload || { echo "ARTIFACT CONTENT WRONG"; exit 1; }
+            echo "OK - artifact survived the round trip through S3"
+        resources:
+          requests: {cpu: 10m, memory: 32Mi}
+          limits: {memory: 64Mi}
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 65534
+          capabilities: {drop: [ALL]}
+          seccompProfile: {type: RuntimeDefault}

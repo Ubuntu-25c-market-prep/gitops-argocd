@@ -34,6 +34,7 @@ resources:
   # Application, not an apps/ entry - see demos/istio-demo/README.md. Removing
   # this line removes the whole demo.
   - ../../../demos/istio-demo
+  - ../../../workflows
 
 # Stamps the cluster name onto the AppProject and ApplicationSets, so an object
 # in the argocd namespace says which cluster's entrypoint created it.
